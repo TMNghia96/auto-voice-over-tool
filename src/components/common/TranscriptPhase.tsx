@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import {  FileText, Play, CheckCircle2, RotateCcw, Volume2, Pause, Cpu, Zap, Cloud, Download, Check, Sparkles, ArrowRight, Globe } from "lucide-react";
+import { FileText, Play, CheckCircle2, RotateCcw, Volume2, Pause, Cpu, Zap, Cloud, Download, Check, Sparkles, ArrowRight, Globe, Wrench } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { parseSrt, formatTimeShort, timeToSeconds, type SrtEntry, WHISPER_LANGUAGES, LANGUAGE_TO_COUNTRY } from "@/lib/utils";
 import ReactCountryFlag from "react-country-flag";
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import { useHardwareStore } from "@/stores/HardwareStore";
 
-type TranscriptEngine = 'whisper-cpu' | 'whisper-gpu' | 'assemblyai';
+type TranscriptEngine = 'whisper-cpu' | 'whisper-gpu' | 'whisper-vulkan' | 'assemblyai';
 
 interface EngineOption {
     id: TranscriptEngine;
@@ -42,7 +42,8 @@ const ENGINES: EngineOption[] = [
         color: 'text-blue-500',
         bgColor: 'bg-blue-500/10',
         borderColor: 'border-blue-500/50',
-        disabled: false},
+        disabled: false
+    },
     {
         id: 'whisper-gpu',
         name: 'Whisper',
@@ -52,7 +53,19 @@ const ENGINES: EngineOption[] = [
         color: 'text-green-500',
         bgColor: 'bg-green-500/10',
         borderColor: 'border-green-500/50',
-        disabled: false},
+        disabled: false
+    },
+    {
+        id: 'whisper-vulkan',
+        name: 'Whisper',
+        subtitle: 'AMD / NVIDIA / Intel',
+        description: 'Dùng Vulkan, hỗ trợ hầu hết các GPU rời',
+        icon: <Sparkles className="w-6 h-6" />,
+        color: 'text-orange-500',
+        bgColor: 'bg-orange-500/10',
+        borderColor: 'border-orange-500/50',
+        disabled: false
+    },
     {
         id: 'assemblyai',
         name: 'AssemblyAI',
@@ -62,7 +75,8 @@ const ENGINES: EngineOption[] = [
         color: 'text-purple-500',
         bgColor: 'bg-purple-500/10',
         borderColor: 'border-purple-500/50',
-        disabled: true},
+        disabled: true
+    },
 ];
 
 export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => {
@@ -71,7 +85,8 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
     const [progress, setProgress] = useState<TranscriptProgress>({
         status: "idle",
         progress: 0,
-        detail: ""});
+        detail: ""
+    });
     const [srtEntries, setSrtEntries] = useState<SrtEntry[]>([]);
     const [srtPath, setSrtPath] = useState("");
     const [projectPath, setProjectPath] = useState("");
@@ -79,16 +94,20 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
     const [audioUrl, setAudioUrl] = useState<string>("");
     const [isPlaying, setIsPlaying] = useState(false);
     const [activeSegment, setActiveSegment] = useState<number | null>(null);
-    const { hasNvidiaGpu } = useHardwareStore();
+    const { hasNvidiaGpu, hasVulkanGpu } = useHardwareStore();
 
     const [selectedEngine, setSelectedEngine] = useState<TranscriptEngine>('whisper-cpu');
     const [engineStatus, setEngineStatus] = useState<Record<string, boolean>>({
         cpu: false,
-        gpu: false});
+        gpu: false,
+        vulkan: false
+    });
     const [models, setModels] = useState<any[]>([]);
     const [activeModel, setActiveModel] = useState<string>("");
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [selectedLanguage, setSelectedLanguage] = useState("auto");
+    const [isCompiling, setIsCompiling] = useState(false);
+    const [compileProgress, setCompileProgress] = useState<{ step: string; message: string; progress: number } | null>(null);
 
     const { setIsProcessing: setGlobalProcessing } = useProcessContext();
 
@@ -101,11 +120,12 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
 
     const checkEngines = async () => {
         try {
-            const [cpuReady, gpuReady] = await Promise.all([
+            const [cpuReady, gpuReady, vulkanReady] = await Promise.all([
                 window.api.checkWhisperEngine('cpu'),
                 window.api.checkWhisperEngine('gpu'),
+                window.api.checkWhisperEngine('vulkan'),
             ]);
-            setEngineStatus({ cpu: cpuReady, gpu: gpuReady });
+            setEngineStatus({ cpu: cpuReady, gpu: gpuReady, vulkan: vulkanReady });
         } catch (err) {
             console.error("Failed to check engines:", err);
         }
@@ -171,6 +191,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
 
         return () => {
             window.api.removeTranscriptListeners();
+            window.api.removeCompileListeners();
             if (audioUrl) {
                 URL.revokeObjectURL(audioUrl);
             }
@@ -264,7 +285,33 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
     const getEngineStatusKey = (engineId: TranscriptEngine): string => {
         if (engineId === 'whisper-cpu') return 'cpu';
         if (engineId === 'whisper-gpu') return 'gpu';
+        if (engineId === 'whisper-vulkan') return 'vulkan';
         return '';
+    };
+
+    const handleCompileVulkan = () => {
+        if (isCompiling) return;
+        setIsCompiling(true);
+        setCompileProgress({ step: 'prepare', message: 'Đang chuẩn bị...', progress: 0 });
+
+        window.api.onCompileProgress((progress) => {
+            setCompileProgress({
+                step: progress.step,
+                message: progress.message,
+                progress: progress.progress,
+            });
+        });
+
+        window.api.onCompileComplete((result) => {
+            setIsCompiling(false);
+            setCompileProgress(null);
+            window.api.removeCompileListeners();
+            if (result.success) {
+                checkEngines();
+            }
+        });
+
+        window.api.compileWhisperVulkan();
     };
 
     const handleModelSelect = async (modelId: string) => {
@@ -295,8 +342,8 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                             return (
                                 <button
                                     key={engine.id}
-                                    disabled={engine.disabled || (engine.id === 'whisper-gpu' && !hasNvidiaGpu)}
-                                    onClick={() => !(engine.disabled || (engine.id === 'whisper-gpu' && !hasNvidiaGpu)) && setSelectedEngine(engine.id)}
+                                    disabled={engine.disabled || (engine.id === 'whisper-gpu' && !hasNvidiaGpu) || (engine.id === 'whisper-vulkan' && !hasVulkanGpu)}
+                                    onClick={() => !(engine.disabled || (engine.id === 'whisper-gpu' && !hasNvidiaGpu) || (engine.id === 'whisper-vulkan' && !hasVulkanGpu)) && setSelectedEngine(engine.id)}
                                     className={`
                                         relative flex flex-col items-center text-center p-6 rounded-xl border-2 transition-all duration-200 cursor-pointer
                                         ${engine.disabled
@@ -329,9 +376,10 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                                     </p>
 
                                     { }
-                                    {engine.disabled || (engine.id === 'whisper-gpu' && !hasNvidiaGpu) ? (
+                                    {engine.disabled || (engine.id === 'whisper-gpu' && !hasNvidiaGpu) || (engine.id === 'whisper-vulkan' && !hasVulkanGpu) ? (
                                         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border">
-                                            {engine.id === 'whisper-gpu' && !hasNvidiaGpu ? "Không hỗ trợ GPU" : "Sắp có"}
+                                            {engine.id === 'whisper-gpu' && !hasNvidiaGpu ? "Không hỗ trợ CUDA" :
+                                                engine.id === 'whisper-vulkan' && !hasVulkanGpu ? "Không hỗ trợ GPU" : "Sắp có"}
                                         </span>
                                     ) : engine.id.startsWith("whisper") ? (
                                         <div
@@ -364,6 +412,29 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                                             <Check className="w-3 h-3" />
                                             Sẵn sàng
                                         </span>
+                                    ) : engine.id === 'whisper-vulkan' ? (
+                                        isCompiling ? (
+                                            <div className="w-full space-y-1 px-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <Spinner className="w-3 h-3 animate-spin text-orange-500" />
+                                                    <span className="text-[10px] text-orange-600 font-medium truncate">
+                                                        {compileProgress?.message || 'Đang cài đặt...'}
+                                                    </span>
+                                                </div>
+                                                <Progress value={compileProgress?.progress || 0} className="w-full h-1" />
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCompileVulkan();
+                                                }}
+                                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/20 hover:bg-orange-500/20 transition-colors cursor-pointer"
+                                            >
+                                                <Wrench className="w-3 h-3" />
+                                                Cài đặt tự động
+                                            </button>
+                                        )
                                     ) : (
                                         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/20">
                                             <Download className="w-3 h-3" />

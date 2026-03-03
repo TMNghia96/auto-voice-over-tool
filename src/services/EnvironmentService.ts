@@ -4,6 +4,7 @@ import fs from 'fs';
 import https from 'https';
 import { spawn } from 'child_process';
 import { getHardwareInfo } from './HardwareService';
+import { getWhisperCompileService } from './WhisperCompileService';
 
 const isDev = !app.isPackaged;
 const BIN_DIR = isDev
@@ -13,6 +14,7 @@ const BIN_DIR = isDev
 const MODELS_DIR = path.join(BIN_DIR, 'models');
 const WHISPER_CPU_DIR = path.join(BIN_DIR, 'whisper-cpu');
 const WHISPER_GPU_DIR = path.join(BIN_DIR, 'whisper-gpu');
+const WHISPER_VULKAN_DIR = path.join(BIN_DIR, 'whisper-vulkan');
 const YT_DLP_DIR = path.join(BIN_DIR, 'yt-dlp');
 const FFMPEG_DIR = path.join(BIN_DIR, 'ffmpeg');
 const HANDBRAKE_DIR = path.join(BIN_DIR, 'handbrake');
@@ -210,9 +212,12 @@ export const deleteWhisperModel = (modelId: string): boolean => {
     }
 };
 
-export const getWhisperPath = (engine: 'cpu' | 'gpu' = 'cpu') => {
+export const getWhisperPath = (engine: 'cpu' | 'gpu' | 'vulkan' = 'cpu') => {
     if (engine === 'gpu') {
         return path.join(WHISPER_GPU_DIR, 'whisper-cli.exe');
+    }
+    if (engine === 'vulkan') {
+        return path.join(WHISPER_VULKAN_DIR, 'whisper-cli.exe');
     }
     return path.join(WHISPER_CPU_DIR, 'whisper-cli.exe');
 };
@@ -368,7 +373,7 @@ export const isWhisperModelReady = (): boolean => {
     return WHISPER_MODELS.some(m => fs.existsSync(path.join(MODELS_DIR, m.fileName)));
 };
 
-export const isWhisperEngineReady = (engine: 'cpu' | 'gpu'): boolean => {
+export const isWhisperEngineReady = (engine: 'cpu' | 'gpu' | 'vulkan'): boolean => {
     return fs.existsSync(getWhisperPath(engine));
 };
 
@@ -380,10 +385,14 @@ export const isEnvironmentReady = (): boolean => {
  * Download a specific whisper engine variant on-demand
  */
 export const downloadWhisperEngine = async (
-    engine: 'cpu' | 'gpu',
+    engine: 'cpu' | 'gpu' | 'vulkan',
     onProgress: ProgressCallback
 ): Promise<boolean> => {
     if (isWhisperEngineReady(engine)) return true;
+
+    if (engine === 'vulkan') {
+        return compileWhisperVulkan(onProgress);
+    }
 
     const url = engine === 'gpu' ? WHISPER_GPU_URL : WHISPER_CPU_URL;
     const destDir = engine === 'gpu' ? WHISPER_GPU_DIR : WHISPER_CPU_DIR;
@@ -410,6 +419,42 @@ export const downloadWhisperEngine = async (
 };
 
 /**
+ * Auto-compile whisper.cpp with Vulkan support using MSYS2 + MinGW
+ */
+export const compileWhisperVulkan = async (
+    onProgress: ProgressCallback
+): Promise<boolean> => {
+    const vulkanDir = WHISPER_VULKAN_DIR;
+    ensureDir(vulkanDir);
+
+    const compileService = getWhisperCompileService();
+
+    // Listen for compile progress and relay to caller
+    const progressHandler = (event: any) => {
+        onProgress({
+            status: event.state === 'error' ? 'error' : 'downloading',
+            progress: event.progress,
+            detail: event.message + (event.error ? `\n${event.error}` : ''),
+        });
+    };
+
+    compileService.on('progress', progressHandler);
+
+    try {
+        const result = await compileService.compile(vulkanDir);
+        if (result.success) {
+            onProgress({ status: 'ready', progress: 100, detail: 'Whisper Vulkan đã sẵn sàng!' });
+            return true;
+        } else {
+            onProgress({ status: 'error', progress: 0, detail: result.error || 'Biên dịch thất bại!' });
+            return false;
+        }
+    } finally {
+        compileService.off('progress', progressHandler);
+    }
+};
+
+/**
  * Setup the environment: download yt-dlp, ffmpeg, whisper.cpp (CPU + GPU), and whisper model if missing
  */
 export const setupEnvironment = async (onProgress: ProgressCallback): Promise<boolean> => {
@@ -421,6 +466,7 @@ export const setupEnvironment = async (onProgress: ProgressCallback): Promise<bo
         ensureDir(HANDBRAKE_DIR);
         ensureDir(WHISPER_CPU_DIR);
         ensureDir(WHISPER_GPU_DIR);
+        ensureDir(WHISPER_VULKAN_DIR);
 
 
         if (!isYtDlpReady()) {

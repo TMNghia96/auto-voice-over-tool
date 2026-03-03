@@ -4,7 +4,7 @@ import fs from 'fs';
 import { getWhisperPath, getWhisperModelPath, getFfmpegPath, isWhisperEngineReady, downloadWhisperEngine } from './EnvironmentService';
 import { optimizeSrtFile } from '../lib/SrtOptimizer';
 
-export type TranscriptEngine = 'whisper-cpu' | 'whisper-gpu' | 'assemblyai';
+export type TranscriptEngine = 'whisper-cpu' | 'whisper-gpu' | 'whisper-vulkan' | 'assemblyai';
 
 interface TranscriptProgress {
     status: 'preparing' | 'converting' | 'transcribing' | 'downloading' | 'done' | 'error';
@@ -52,7 +52,7 @@ const runWhisper = (
     outputDir: string,
     outputName: string,
     onProgress: ProgressCallback,
-    engine: 'cpu' | 'gpu' = 'cpu',
+    engine: 'cpu' | 'gpu' | 'vulkan' = 'cpu',
     language = 'auto'
 ): Promise<string | null> => {
     return new Promise((resolve) => {
@@ -171,10 +171,15 @@ export const transcribeAudio = async (
             return null;
         }
 
-        const whisperVariant: 'cpu' | 'gpu' = engine === 'whisper-gpu' ? 'gpu' : 'cpu';
+        const whisperVariant: 'cpu' | 'gpu' | 'vulkan' =
+            engine === 'whisper-gpu' ? 'gpu' :
+                engine === 'whisper-vulkan' ? 'vulkan' : 'cpu';
 
         if (!isWhisperEngineReady(whisperVariant)) {
-            onProgress({ status: 'downloading', progress: 0, detail: `Cần tải Whisper (${whisperVariant === 'gpu' ? 'GPU' : 'CPU'})...` });
+            const engineLabel = whisperVariant === 'gpu' ? 'GPU (CUDA)'
+                : whisperVariant === 'vulkan' ? 'GPU (Vulkan - AMD/Intel/NVIDIA)'
+                    : 'CPU';
+            onProgress({ status: 'downloading', progress: 0, detail: `Cần tải Whisper (${engineLabel})...` });
             const downloaded = await downloadWhisperEngine(whisperVariant, (p) => {
                 onProgress({
                     status: 'downloading',

@@ -61,6 +61,15 @@ contextBridge.exposeInMainWorld('api', {
 
     checkWhisperEngine: (engine: string) => ipcRenderer.invoke('check-whisper-engine', engine),
 
+    compileWhisperVulkan: () => ipcRenderer.send('compile-whisper-vulkan'),
+    onCompileProgress: (callback: (progress: any) => void) => ipcRenderer.on('compile-progress', (_, progress) => callback(progress)),
+    onCompileComplete: (callback: (result: any) => void) => ipcRenderer.on('compile-complete', (_, result) => callback(result)),
+    removeCompileListeners: () => {
+        ipcRenderer.removeAllListeners('compile-progress');
+        ipcRenderer.removeAllListeners('compile-complete');
+        ipcRenderer.removeAllListeners('compile-console');
+    },
+
     getWhisperDownloadStatus: () => ipcRenderer.invoke('get-whisper-download-status'),
     listWhisperModels: () => ipcRenderer.invoke('list-whisper-models'),
     downloadWhisperModel: (modelId: string) => ipcRenderer.invoke('download-whisper-model', modelId),

@@ -11,7 +11,7 @@ interface Window {
         selectDirectory: () => Promise<string | null>;
         getPinnedPath: () => Promise<string>;
         setPinnedPath: (path: string) => Promise<boolean>;
-        getHardwareInfo: () => Promise<{ cpuName: string; totalRamGB: number; gpus: string[]; hasNvidiaGpu: boolean }>;
+        getHardwareInfo: () => Promise<{ cpuName: string; totalRamGB: number; gpus: string[]; hasNvidiaGpu: boolean; hasAmdGpu: boolean; hasVulkanGpu: boolean }>;
 
         openSettingsWindow: () => Promise<void>;
 
@@ -51,6 +51,11 @@ interface Window {
         readAudioFile: (projectPath: string) => Promise<{ buffer: ArrayBuffer; mimeType: string } | null>;
 
         checkWhisperEngine: (engine: string) => Promise<boolean>;
+
+        compileWhisperVulkan: () => void;
+        onCompileProgress: (callback: (progress: { step: string; message: string; progress: number; state: string; error?: string }) => void) => void;
+        onCompileComplete: (callback: (result: { success: boolean; error?: string }) => void) => void;
+        removeCompileListeners: () => void;
 
         getWhisperDownloadStatus: () => Promise<{ modelId: string | null; percent: number }>;
         listWhisperModels: () => Promise<Array<{

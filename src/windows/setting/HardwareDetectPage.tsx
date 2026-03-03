@@ -8,6 +8,8 @@ import { Spinner } from "@/components/ui/spinner";
 export const HardwareDetectPage = () => {
     const {
         hasNvidiaGpu,
+        hasAmdGpu,
+        hasVulkanGpu,
         cpuName,
         totalRamGB,
         gpus,
@@ -93,25 +95,25 @@ export const HardwareDetectPage = () => {
                 </Card>
 
                 {/* Status Card */}
-                <Card className={hasNvidiaGpu ? "border-green-500/50 bg-green-500/5" : "border-amber-500/50 bg-amber-500/5"}>
+                <Card className={hasVulkanGpu ? "border-green-500/50 bg-green-500/5" : "border-amber-500/50 bg-amber-500/5"}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Whisper GPU</CardTitle>
                         <Zap className={`h-4 w-4 ${hasNvidiaGpu ? 'text-green-500' : 'text-amber-500'}`} />
                     </CardHeader>
                     <CardContent>
                         <div className="flex items-center gap-2">
-                            {hasNvidiaGpu ? (
+                            {hasVulkanGpu ? (
                                 <>
                                     <CheckCircle2 className="w-5 h-5 text-green-500" />
                                     <span className="text-sm font-semibold text-green-600 dark:text-green-500">
-                                        Đã sẵn sàng
+                                        {hasNvidiaGpu ? "Hỗ trợ CUDA & Vulkan" : "Hỗ trợ Vulkan"}
                                     </span>
                                 </>
                             ) : (
                                 <>
                                     <XCircle className="w-5 h-5 text-amber-500" />
                                     <span className="text-sm font-semibold text-amber-600 dark:text-amber-500">
-                                        Không hỗ trợ
+                                        Không hỗ trợ GPU
                                     </span>
                                 </>
                             )}
@@ -119,7 +121,9 @@ export const HardwareDetectPage = () => {
                         <p className="text-xs text-muted-foreground mt-2">
                             {hasNvidiaGpu
                                 ? "Máy tính hỗ trợ tăng tốc bằng NVIDIA CUDA."
-                                : "Cần card NVIDIA để sử dụng tính năng này."}
+                                : hasVulkanGpu
+                                    ? "Máy tính hỗ trợ tăng tốc bằng Vulkan (AMD/Intel)."
+                                    : "Không tìm thấy GPU rời phù hợp để tăng tốc."}
                         </p>
                     </CardContent>
                 </Card>
@@ -149,16 +153,26 @@ export const HardwareDetectPage = () => {
                                             <p className="font-medium text-sm">{gpu}</p>
                                             <p className="text-xs text-muted-foreground">
                                                 {gpu.toLowerCase().includes("nvidia")
-                                                    ? "Hỗ trợ CUDA Acceleration"
-                                                    : "GPU Tích hợp / Khác"}
+                                                    ? "Hỗ trợ CUDA & Vulkan"
+                                                    : (gpu.toLowerCase().includes("amd") || gpu.toLowerCase().includes("radeon") || gpu.toLowerCase().includes("intel"))
+                                                        ? "Hỗ trợ Vulkan Acceleration"
+                                                        : "GPU Tích hợp / Khác"}
                                             </p>
                                         </div>
                                     </div>
-                                    {gpu.toLowerCase().includes("nvidia") && (
+                                    {gpu.toLowerCase().includes("nvidia") ? (
                                         <span className="text-xs bg-green-500/10 text-green-600 border border-green-500/20 px-2 py-1 rounded-full font-medium">
                                             NVIDIA
                                         </span>
-                                    )}
+                                    ) : (gpu.toLowerCase().includes("amd") || gpu.toLowerCase().includes("radeon")) ? (
+                                        <span className="text-xs bg-orange-500/10 text-orange-600 border border-orange-500/20 px-2 py-1 rounded-full font-medium">
+                                            AMD
+                                        </span>
+                                    ) : gpu.toLowerCase().includes("intel") ? (
+                                        <span className="text-xs bg-blue-500/10 text-blue-600 border border-blue-500/20 px-2 py-1 rounded-full font-medium">
+                                            Intel
+                                        </span>
+                                    ) : null}
                                 </div>
                             ))}
                         </div>

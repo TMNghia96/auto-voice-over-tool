@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
     Play,
-    
+
     CheckCircle2,
     Settings,
-    Sparkles} from "lucide-react";
+    Sparkles
+} from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { WHISPER_LANGUAGES, LANGUAGE_TO_COUNTRY, TARGET_LANGUAGES } from "@/lib/utils";
 import ReactCountryFlag from "react-country-flag";
@@ -20,7 +21,7 @@ export const ProjectAutoPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { currentPhase, setCurrentPhase, markPhaseCompleted, resetPipeline } = useAutoPipeline();
-    const { hasNvidiaGpu } = useHardwareStore();
+    const { hasNvidiaGpu, hasVulkanGpu } = useHardwareStore();
 
     const [projectPath, setProjectPath] = useState("");
     const [projectName, setProjectName] = useState("");
@@ -29,7 +30,7 @@ export const ProjectAutoPage = () => {
     const [error, setError] = useState<string | null>(null);
 
     // Config state
-    const [whisperEngine, setWhisperEngine] = useState("whisper-cpp-cpu");
+    const [whisperEngine, setWhisperEngine] = useState("whisper-cpu");
     const [sourceLanguage, setSourceLanguage] = useState("auto");
     const [targetLanguage, setTargetLanguage] = useState("vi");
     const [selectedPromptId, setSelectedPromptId] = useState("");
@@ -181,7 +182,9 @@ ${userPrompt}`.trim();
                                     { role: "system", content: systemPrompt },
                                     { role: "user", content: textsToTranslate },
                                 ],
-                                temperature: 0.3})});
+                                temperature: 0.3
+                            })
+                        });
                         if (!response.ok) throw new Error(await response.text());
                         const data = await response.json();
                         const translatedParts = (data.choices?.[0]?.message?.content || "").split(/\n?---\n?/);
@@ -212,7 +215,8 @@ ${userPrompt}`.trim();
 
                 const finalTranslated = srtEntries.map((entry: any) => ({
                     ...entry,
-                    text: translatedMap.get(entry.index) || entry.text}));
+                    text: translatedMap.get(entry.index) || entry.text
+                }));
                 await window.api.saveTranslatedSrt(projectPath, targetLanguage, stringifySrt(finalTranslated));
                 markPhaseCompleted("translate");
                 setPhaseProgress(100);
@@ -337,8 +341,9 @@ ${userPrompt}`.trim();
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="whisper-cpp-cpu">Whisper.cpp (CPU)</SelectItem>
-                                            <SelectItem value="whisper-cpp-gpu" disabled={!hasNvidiaGpu}>Whisper.cpp (GPU) {!hasNvidiaGpu && "(Không hỗ trợ)"}</SelectItem>
+                                            <SelectItem value="whisper-cpu">Whisper.cpp (CPU)</SelectItem>
+                                            <SelectItem value="whisper-gpu" disabled={!hasNvidiaGpu}>Whisper.cpp (NVIDIA CUDA) {!hasNvidiaGpu && "(Không hỗ trợ)"}</SelectItem>
+                                            <SelectItem value="whisper-vulkan" disabled={!hasVulkanGpu}>Whisper.cpp (Vulkan - AMD/Intel) {!hasVulkanGpu && "(Không hỗ trợ)"}</SelectItem>
                                             <SelectItem value="assemblyai">AssemblyAI (Cloud)</SelectItem>
                                         </SelectContent>
                                     </Select>

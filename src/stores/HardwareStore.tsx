@@ -2,6 +2,8 @@ import { create } from 'zustand';
 
 interface HardwareState {
     hasNvidiaGpu: boolean;
+    hasAmdGpu: boolean;
+    hasVulkanGpu: boolean;
     cpuName: string;
     totalRamGB: number;
     gpus: string[];
@@ -11,6 +13,8 @@ interface HardwareState {
 
 export const useHardwareStore = create<HardwareState>((set) => ({
     hasNvidiaGpu: false,
+    hasAmdGpu: false,
+    hasVulkanGpu: false,
     cpuName: '',
     totalRamGB: 0,
     gpus: [],
@@ -20,6 +24,8 @@ export const useHardwareStore = create<HardwareState>((set) => ({
             const info = await window.api.getHardwareInfo();
             set({
                 hasNvidiaGpu: info.hasNvidiaGpu,
+                hasAmdGpu: info.hasAmdGpu,
+                hasVulkanGpu: info.hasVulkanGpu,
                 cpuName: info.cpuName,
                 totalRamGB: info.totalRamGB,
                 gpus: info.gpus,

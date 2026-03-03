@@ -94,3 +94,16 @@ out/
 
 # Downloaded binaries
 bin/
+
+# Local workspace for whisper compilation
+whisper-workspace/
+
+# Scratch scripts and logs
+debug_log.txt
+debug_utf8.txt
+compile-log.txt
+check_gh.ts
+check_gh2.ts
+test_vulkan.ts
+*.mts.timestamp*
+whisper_vulkan_build/

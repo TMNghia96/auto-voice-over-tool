@@ -3,6 +3,7 @@ import fs from 'fs';
 import { spawn } from 'child_process';
 import { getFfmpegPath, getHandBrakePath } from './EnvironmentService';
 import { parseSrt, timeToSeconds } from '../lib/SrtOptimizer';
+import { getHardwareInfo } from './HardwareService';
 
 export interface FinalVideoProgress {
     status: 'preparing' | 'processing' | 'concatenating' | 'rerendering' | 'done' | 'error';
@@ -151,19 +152,45 @@ const buildSegmentMap = async (
 };
 
 /**
- * NVENC video encoding args — used for ALL segments.
+ * Video encoding args — used for ALL segments.
  * Re-encoding everything ensures:
  * - Each clip starts with a proper keyframe (no frozen frames)
  * - Frame-accurate seeking (no missing video)
  * - Consistent codec params across all clips (no stuttering at concat joins)
  */
-const NVENC_ARGS = [
-    '-c:v', 'h264_nvenc',
-    '-preset', 'p4',       // Fast preset (p1=fastest ... p7=slowest). p4 = good speed/quality.
-    '-rc', 'vbr',          // Variable bitrate for better quality  
-    '-cq', '20',           // Constant quality (lower=better, 20=very good)
-    '-b:v', '0',           // No target bitrate, let CQ decide
-];
+let VIDEO_ENCODE_ARGS: string[] = [];
+let HANDBRAKE_ENCODER = 'nvenc_h264';
+
+const setupHardwareEncoders = async () => {
+    const hwInfo = await getHardwareInfo();
+    if (hwInfo.hasAmdGpu) {
+        VIDEO_ENCODE_ARGS = [
+            '-c:v', 'h264_amf',
+            '-quality', 'quality',
+            '-rc', 'cqp',
+            '-qp_i', '20',
+            '-qp_p', '20',
+            '-qp_b', '20',
+        ];
+        HANDBRAKE_ENCODER = 'vce_h264';
+    } else if (hwInfo.hasNvidiaGpu) {
+        VIDEO_ENCODE_ARGS = [
+            '-c:v', 'h264_nvenc',
+            '-preset', 'p4',
+            '-rc', 'vbr',
+            '-cq', '20',
+            '-b:v', '0',
+        ];
+        HANDBRAKE_ENCODER = 'nvenc_h264';
+    } else {
+        VIDEO_ENCODE_ARGS = [
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-crf', '22',
+        ];
+        HANDBRAKE_ENCODER = 'x264';
+    }
+};
 
 const AUDIO_ARGS = ['-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2'];
 
@@ -186,7 +213,7 @@ const processSegment = async (
             '-ss', segment.videoStart.toFixed(3),
             '-t', duration.toFixed(3),
             '-i', originalVideoPath,
-            ...NVENC_ARGS,
+            ...VIDEO_ENCODE_ARGS,
             ...AUDIO_ARGS,
             outputPath,
         ]);
@@ -201,7 +228,7 @@ const processSegment = async (
             '-i', originalVideoPath,
             '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
             '-map', '0:v', '-map', '1:a',
-            ...NVENC_ARGS,
+            ...VIDEO_ENCODE_ARGS,
             ...AUDIO_ARGS,
             '-t', duration.toFixed(3),
             outputPath,
@@ -221,7 +248,7 @@ const processSegment = async (
             '-i', originalVideoPath,
             '-i', segment.audioPath,
             '-map', '0:v', '-map', '1:a',
-            ...NVENC_ARGS,
+            ...VIDEO_ENCODE_ARGS,
             '-af', 'apad',
             ...AUDIO_ARGS,
             '-t', videoDur.toFixed(3),
@@ -238,7 +265,7 @@ const processSegment = async (
             '-i', originalVideoPath,
             '-i', segment.audioPath,
             '-map', '0:v', '-map', '1:a',
-            ...NVENC_ARGS,
+            ...VIDEO_ENCODE_ARGS,
             '-af', `atempo=${ratio.toFixed(4)},apad`,
             ...AUDIO_ARGS,
             '-t', videoDur.toFixed(3),
@@ -260,7 +287,7 @@ const processSegment = async (
         '-map', '0:v', '-map', '1:a',
         '-vf', `setpts=${videoSlowFactor.toFixed(4)}*PTS`,
         '-af', 'atempo=1.3,apad',
-        ...NVENC_ARGS,
+        ...VIDEO_ENCODE_ARGS,
         ...AUDIO_ARGS,
         '-t', targetDur.toFixed(3),
         outputPath,
@@ -308,7 +335,7 @@ const rerenderWithHandBrake = async (
         const args = [
             '-i', inputPath,
             '-o', outputPath,
-            '--encoder', 'nvenc_h264',
+            '--encoder', HANDBRAKE_ENCODER,
             '--quality', '20',
             '--cfr',                    // Constant Framerate (quan trọng nhất!)
             '--aencoder', 'av_aac',
@@ -365,6 +392,7 @@ export const createFinalVideo = async (
     onProgress: (p: FinalVideoProgress) => void,
 ): Promise<string | null> => {
     try {
+        await setupHardwareEncoders();
         const originalVideo = findOriginalVideo(projectPath);
         if (!originalVideo) {
             onProgress({ status: 'error', progress: 0, detail: 'Không tìm thấy video gốc!' });
