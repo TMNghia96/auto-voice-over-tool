@@ -30,7 +30,6 @@ export const getHardwareInfo = (): Promise<HardwareInfo> => {
                     hasAmdGpu = lines.some(name =>
                         name.toLowerCase().includes("amd") || name.toLowerCase().includes("radeon")
                     );
-                    // Vulkan được hỗ trợ bởi NVIDIA, AMD, và Intel (từ Gen 9+)
                     const hasIntelGpu = lines.some(name =>
                         name.toLowerCase().includes("intel") && (
                             name.toLowerCase().includes("arc") ||
@@ -39,7 +38,11 @@ export const getHardwareInfo = (): Promise<HardwareInfo> => {
                             name.toLowerCase().includes("hd graphics")
                         )
                     );
+                    console.log("[HardwareService] Found GPUs:", lines);
                     hasVulkanGpu = hasNvidiaGpu || hasAmdGpu || hasIntelGpu;
+                    console.log("[HardwareService] hasNvidiaGpu:", hasNvidiaGpu, "hasAmdGpu:", hasAmdGpu, "hasVulkanGpu:", hasVulkanGpu);
+                } else if (error) {
+                    console.error("[HardwareService] PowerShell error:", error);
                 }
 
                 resolve({

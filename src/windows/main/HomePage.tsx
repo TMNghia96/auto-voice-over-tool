@@ -56,7 +56,7 @@ export const HomePage = () => {
     const handleCreateProject = async () => {
         const success = await window.api.createProjectFolder(projectPath, projectName);
         if (!success) {
-            alert("Không thể tạo thư mục project! (Có thể thư mục đã tồn tại)");
+            alert("Không thể tạo thư mục dự án! (Thư mục có thể đã tồn tại)");
             return;
         }
 
@@ -78,7 +78,7 @@ export const HomePage = () => {
     };
 
     const handleDeleteProject = async (id: string) => {
-        if (confirm("Bạn có chắc chắn muốn xóa project này không?")) {
+        if (confirm("Bạn có chắc chắn muốn xóa dự án này không?")) {
             await window.api.deleteProject(id);
             loadProjects();
         }
@@ -98,30 +98,30 @@ export const HomePage = () => {
 
     return (
         <div className="p-8">
-            {}
+            { }
             <div className="mb-8 flex items-center gap-3">
                 <AlertDialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <AlertDialogTrigger asChild>
                         <Button className="gap-2">
                             <Plus className="w-4 h-4" />
-                            Tạo Project
+                            Tạo Dự án Mới
                         </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                         <AlertDialogHeader>
-                            <AlertDialogTitle>Tạo Project Mới</AlertDialogTitle>
+                            <AlertDialogTitle>Tạo Dự án Mới</AlertDialogTitle>
                             <AlertDialogDescription>
-                                Nhập tên và đường dẫn cho project mới của bạn.
+                                Nhập tên và đường dẫn thư mục cho dự án mới của bạn.
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                         <div className="grid gap-4 py-4">
                             <div className="grid gap-2">
                                 <label htmlFor="name" className="text-sm font-medium">
-                                    Tên Project
+                                    Tên Dự án
                                 </label>
                                 <Input
                                     id="name"
-                                    placeholder="Ví dụ: My App"
+                                    placeholder="Ví dụ: Dự án của tôi"
                                     value={projectName}
                                     onChange={(e) => setProjectName(e.target.value)}
                                 />
@@ -154,7 +154,7 @@ export const HomePage = () => {
                                         type="button"
                                         variant="outline"
                                         size="icon"
-                                        title="Chọn thư mục"
+                                        title="Chọn Thư mục"
                                         onClick={async (e) => {
                                             e.preventDefault();
                                             const path = await window.api.selectDirectory();
@@ -191,12 +191,12 @@ export const HomePage = () => {
                 </Button>
             </div>
 
-            {}
+            { }
             <div className="space-y-4">
-                <h2 className="text-2xl font-bold tracking-tight">Danh sách Project</h2>
+                <h2 className="text-2xl font-bold tracking-tight">Danh sách Dự án</h2>
                 {projects.length === 0 ? (
                     <div className="text-muted-foreground text-sm">
-                        Chưa có project nào được tạo.
+                        Chưa có dự án nào được tạo.
                     </div>
                 ) : (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -227,7 +227,7 @@ export const HomePage = () => {
                                     </p>
                                 </div>
                                 <div className="mt-4 text-xs text-muted-foreground">
-                                    Được tạo: {new Date(project.createdAt).toLocaleDateString()}
+                                    Đã tạo: {new Date(project.createdAt).toLocaleDateString()}
                                 </div>
                             </div>
                         ))}

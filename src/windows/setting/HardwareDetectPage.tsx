@@ -44,9 +44,9 @@ export const HardwareDetectPage = () => {
         <div className="space-y-6 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-lg font-semibold tracking-tight">Thông tin Thiết bị</h2>
+                    <h2 className="text-lg font-semibold tracking-tight">Thông tin Phần cứng</h2>
                     <p className="text-sm text-muted-foreground mt-1">
-                        Chi tiết cấu hình phần cứng phát hiện được trên máy tính của bạn.
+                        Chi tiết cấu hình phần cứng được phát hiện trên máy tính của bạn.
                     </p>
                 </div>
                 <Button
@@ -65,7 +65,7 @@ export const HardwareDetectPage = () => {
                 {/* CPU Card */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Vi xử lý (CPU)</CardTitle>
+                        <CardTitle className="text-sm font-medium">Bộ xử lý (CPU)</CardTitle>
                         <Cpu className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
@@ -73,7 +73,7 @@ export const HardwareDetectPage = () => {
                             {cpuName || "Đang tải..."}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            Hiệu suất cơ bản
+                            Hiệu năng lõi
                         </p>
                     </CardContent>
                 </Card>
@@ -113,16 +113,16 @@ export const HardwareDetectPage = () => {
                                 <>
                                     <XCircle className="w-5 h-5 text-amber-500" />
                                     <span className="text-sm font-semibold text-amber-600 dark:text-amber-500">
-                                        Không hỗ trợ GPU
+                                        Không có Tăng tốc GPU
                                     </span>
                                 </>
                             )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-2">
                             {hasNvidiaGpu
-                                ? "Máy tính hỗ trợ tăng tốc bằng NVIDIA CUDA."
+                                ? "Hệ thống hỗ trợ tăng tốc NVIDIA CUDA."
                                 : hasVulkanGpu
-                                    ? "Máy tính hỗ trợ tăng tốc bằng Vulkan (AMD/Intel)."
+                                    ? "Hệ thống hỗ trợ tăng tốc Vulkan (AMD/Intel)."
                                     : "Không tìm thấy GPU rời phù hợp để tăng tốc."}
                         </p>
                     </CardContent>
@@ -155,7 +155,7 @@ export const HardwareDetectPage = () => {
                                                 {gpu.toLowerCase().includes("nvidia")
                                                     ? "Hỗ trợ CUDA & Vulkan"
                                                     : (gpu.toLowerCase().includes("amd") || gpu.toLowerCase().includes("radeon") || gpu.toLowerCase().includes("intel"))
-                                                        ? "Hỗ trợ Vulkan Acceleration"
+                                                        ? "Hỗ trợ Tăng tốc Vulkan"
                                                         : "GPU Tích hợp / Khác"}
                                             </p>
                                         </div>
@@ -178,7 +178,7 @@ export const HardwareDetectPage = () => {
                         </div>
                     ) : (
                         <p className="text-sm text-muted-foreground italic text-center py-4">
-                            Không phát hiện được GPU nào.
+                            Không phát hiện GPU.
                         </p>
                     )}
                 </CardContent>

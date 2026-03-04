@@ -48,7 +48,7 @@ export const AboutPage = () => {
                                 size="icon"
                                 className="w-8 h-8 rounded-none text-muted-foreground hover:text-foreground relative"
                                 onClick={() => handleCopy("https://github.com/leemjnnkdzuy", "leemjnnkdzuy")}
-                                title="Copy Link"
+                                title="Sao chép Liên kết"
                             >
                                 {copiedId === "leemjnnkdzuy" ? (
                                     <CheckCircle2 className="w-3.5 h-3.5 text-green-500 animate-in fade-in zoom-in" />
@@ -70,7 +70,7 @@ export const AboutPage = () => {
                                 size="icon"
                                 className="w-8 h-8 rounded-none text-muted-foreground hover:text-foreground relative"
                                 onClick={() => handleCopy("https://www.facebook.com/leemjnnkdzuy", "facebook")}
-                                title="Copy Link"
+                                title="Sao chép Liên kết"
                             >
                                 {copiedId === "facebook" ? (
                                     <CheckCircle2 className="w-3.5 h-3.5 text-green-500 animate-in fade-in zoom-in" />
@@ -92,7 +92,7 @@ export const AboutPage = () => {
                                 size="icon"
                                 className="w-8 h-8 rounded-none text-muted-foreground hover:text-foreground relative"
                                 onClick={() => handleCopy("https://github.com/leemjnnkdzuy/", "github")}
-                                title="Copy Link"
+                                title="Sao chép Liên kết"
                             >
                                 {copiedId === "github" ? (
                                     <CheckCircle2 className="w-3.5 h-3.5 text-green-500 animate-in fade-in zoom-in" />
@@ -114,7 +114,7 @@ export const AboutPage = () => {
                                 size="icon"
                                 className="w-8 h-8 rounded-none text-muted-foreground hover:text-foreground relative"
                                 onClick={() => handleCopy("duylelv17@gmail.com", "email")}
-                                title="Copy Email"
+                                title="Sao chép Email"
                             >
                                 {copiedId === "email" ? (
                                     <CheckCircle2 className="w-3.5 h-3.5 text-green-500 animate-in fade-in zoom-in" />

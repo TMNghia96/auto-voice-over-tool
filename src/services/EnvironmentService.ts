@@ -2,9 +2,9 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { getHardwareInfo } from './HardwareService';
-import { getWhisperCompileService } from './WhisperCompileService';
+import { getWhisperCompileService, REQUIRED_DLLS } from './WhisperCompileService';
 
 const isDev = !app.isPackaged;
 const BIN_DIR = isDev
@@ -212,14 +212,21 @@ export const deleteWhisperModel = (modelId: string): boolean => {
     }
 };
 
-export const getWhisperPath = (engine: 'cpu' | 'gpu' | 'vulkan' = 'cpu') => {
-    if (engine === 'gpu') {
-        return path.join(WHISPER_GPU_DIR, 'whisper-cli.exe');
+export const getWhisperPath = (engine: string = 'cpu') => {
+    const variant = engine.includes('vulkan') ? 'vulkan' :
+        engine.includes('gpu') ? 'gpu' : 'cpu';
+
+    let result: string;
+    if (variant === 'gpu') {
+        result = path.join(WHISPER_GPU_DIR, 'whisper-cli.exe');
+    } else if (variant === 'vulkan') {
+        result = path.join(WHISPER_VULKAN_DIR, 'whisper-cli.exe');
+    } else {
+        result = path.join(WHISPER_CPU_DIR, 'whisper-cli.exe');
     }
-    if (engine === 'vulkan') {
-        return path.join(WHISPER_VULKAN_DIR, 'whisper-cli.exe');
-    }
-    return path.join(WHISPER_CPU_DIR, 'whisper-cli.exe');
+
+    console.log(`getWhisperPath(engine="${engine}") -> variant="${variant}", path="${result}"`);
+    return result;
 };
 
 const YT_DLP_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe';
@@ -245,7 +252,7 @@ const ensureDir = (dir: string) => {
 /**
  * Download a file from URL with redirect support
  */
-const downloadFile = (url: string, destPath: string, onProgress?: (percent: number) => void): Promise<void> => {
+const downloadFile = (url: string, destPath: string, onProgress?: (percent: number) => void): Promise<boolean> => {
     return new Promise((resolve, reject) => {
         const makeRequest = (currentUrl: string, redirectCount = 0) => {
             if (redirectCount > 10) {
@@ -288,7 +295,7 @@ const downloadFile = (url: string, destPath: string, onProgress?: (percent: numb
 
                 fileStream.on('finish', () => {
                     fileStream.close();
-                    resolve();
+                    resolve(true);
                 });
 
                 fileStream.on('error', (err) => {
@@ -374,7 +381,47 @@ export const isWhisperModelReady = (): boolean => {
 };
 
 export const isWhisperEngineReady = (engine: 'cpu' | 'gpu' | 'vulkan'): boolean => {
-    return fs.existsSync(getWhisperPath(engine));
+    const exePath = getWhisperPath(engine);
+    if (!fs.existsSync(exePath)) return false;
+
+    if (engine === 'vulkan') {
+        const binDir = WHISPER_VULKAN_DIR;
+
+        // 1. Check if required DLLs exist
+        for (const dll of REQUIRED_DLLS) {
+            if (!fs.existsSync(path.join(binDir, dll))) {
+                console.warn(`[isWhisperEngineReady] Missing required DLL for Vulkan: ${dll}`);
+                return false;
+            }
+        }
+
+        // 2. Run a quick binary test to catch missing hidden dependencies or memory access errors
+        try {
+            const result = spawnSync(exePath, ['--help'], {
+                cwd: binDir,
+                env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH}` },
+                encoding: 'utf-8',
+                timeout: 5000 // 5 seconds max
+            });
+
+            if (result.error) {
+                console.error(`[isWhisperEngineReady] Vulkan binary failed to spawn: ${result.error.message}`);
+                return false;
+            }
+
+            // Even if it returns non-zero, as long as it prints usage, it's fine.
+            const output = (result.stdout || '') + (result.stderr || '');
+            if (result.status !== 0 && !output.toLowerCase().includes('usage:')) {
+                console.error(`[isWhisperEngineReady] Vulkan binary crash or error. Exit code: ${result.status}`);
+                return false;
+            }
+        } catch (error) {
+            console.error(`[isWhisperEngineReady] Exception during Vulkan binary test:`, error);
+            return false;
+        }
+    }
+
+    return true;
 };
 
 export const isEnvironmentReady = (): boolean => {
@@ -443,10 +490,10 @@ export const compileWhisperVulkan = async (
     try {
         const result = await compileService.compile(vulkanDir);
         if (result.success) {
-            onProgress({ status: 'ready', progress: 100, detail: 'Whisper Vulkan đã sẵn sàng!' });
+            onProgress({ status: 'ready', progress: 100, detail: 'Whisper Vulkan is ready!' });
             return true;
         } else {
-            onProgress({ status: 'error', progress: 0, detail: result.error || 'Biên dịch thất bại!' });
+            onProgress({ status: 'error', progress: 0, detail: result.error || 'Compilation failed!' });
             return false;
         }
     } finally {
@@ -468,111 +515,118 @@ export const setupEnvironment = async (onProgress: ProgressCallback): Promise<bo
         ensureDir(WHISPER_GPU_DIR);
         ensureDir(WHISPER_VULKAN_DIR);
 
+        onProgress({ status: 'preparing', progress: 0, detail: 'Checking environment...' });
 
         if (!isYtDlpReady()) {
-            onProgress({ status: 'downloading', progress: 0, detail: 'Đang tải yt-dlp...' });
-            await downloadFile(YT_DLP_URL, getYtDlpPath(), (percent) => {
-                onProgress({ status: 'downloading', progress: percent * 0.15, detail: `Đang tải yt-dlp... ${percent}%` });
+            onProgress({ status: 'downloading', progress: 0, detail: 'Downloading yt-dlp.exe...' });
+            const success = await downloadFile(YT_DLP_URL, getYtDlpPath(), (percent) => {
+                onProgress({ status: 'downloading', progress: percent * 0.15, detail: `Downloading yt-dlp: ${percent}%` });
             });
-            onProgress({ status: 'downloading', progress: 15, detail: 'yt-dlp đã tải xong!' });
+            if (!success) return false;
+            onProgress({ status: 'downloading', progress: 15, detail: 'yt-dlp download complete.' });
         } else {
-            onProgress({ status: 'checking', progress: 15, detail: 'yt-dlp đã sẵn sàng.' });
+            onProgress({ status: 'checking', progress: 15, detail: 'yt-dlp is ready.' });
         }
 
         if (!isFfmpegReady()) {
-            onProgress({ status: 'downloading', progress: 15, detail: 'Đang tải ffmpeg...' });
+            onProgress({ status: 'downloading', progress: 15, detail: 'Downloading ffmpeg.exe...' });
             const zipPath = path.join(FFMPEG_DIR, 'ffmpeg.zip');
-            await downloadFile(FFMPEG_URL, zipPath, (percent) => {
-                onProgress({ status: 'downloading', progress: 15 + percent * 0.10, detail: `Đang tải ffmpeg... ${percent}%` });
+            const success = await downloadFile(FFMPEG_URL, zipPath, (percent) => {
+                onProgress({ status: 'downloading', progress: 15 + percent * 0.10, detail: `Downloading ffmpeg: ${percent}%` });
             });
-            onProgress({ status: 'extracting', progress: 25, detail: 'Đang giải nén ffmpeg...' });
+            if (!success) return false;
+            onProgress({ status: 'extracting', progress: 25, detail: 'Extracting ffmpeg...' });
             const extracted = await extractExeFromZip(zipPath, FFMPEG_DIR, 'ffmpeg.exe');
             if (!extracted) {
-                onProgress({ status: 'error', progress: 25, detail: 'Không thể giải nén ffmpeg!' });
+                onProgress({ status: 'error', progress: 25, detail: 'Failed to extract ffmpeg!' });
                 return false;
             }
-            onProgress({ status: 'downloading', progress: 27, detail: 'ffmpeg đã sẵn sàng!' });
+            onProgress({ status: 'downloading', progress: 27, detail: 'ffmpeg is ready.' });
         } else {
-            onProgress({ status: 'checking', progress: 27, detail: 'ffmpeg đã sẵn sàng.' });
+            onProgress({ status: 'checking', progress: 27, detail: 'ffmpeg is ready.' });
         }
 
         if (!isHandBrakeReady()) {
-            onProgress({ status: 'downloading', progress: 27, detail: 'Đang tải HandBrakeCLI...' });
+            onProgress({ status: 'downloading', progress: 27, detail: 'Downloading HandBrakeCLI...' });
             const hbZipPath = path.join(HANDBRAKE_DIR, 'handbrake.zip');
-            await downloadFile(HANDBRAKE_URL, hbZipPath, (percent) => {
-                onProgress({ status: 'downloading', progress: 27 + percent * 0.09, detail: `Đang tải HandBrakeCLI... ${percent}%` });
+            const success = await downloadFile(HANDBRAKE_URL, hbZipPath, (percent) => {
+                onProgress({ status: 'downloading', progress: 27 + percent * 0.09, detail: `Downloading HandBrakeCLI: ${percent}%` });
             });
-            onProgress({ status: 'extracting', progress: 36, detail: 'Đang giải nén HandBrakeCLI...' });
+            if (!success) return false;
+            onProgress({ status: 'extracting', progress: 36, detail: 'Extracting HandBrakeCLI...' });
             const extracted = await extractExeFromZip(hbZipPath, HANDBRAKE_DIR, 'HandBrakeCLI.exe');
             if (!extracted) {
-                onProgress({ status: 'error', progress: 36, detail: 'Không thể giải nén HandBrakeCLI!' });
+                onProgress({ status: 'error', progress: 36, detail: 'Failed to extract HandBrakeCLI!' });
                 return false;
             }
-            onProgress({ status: 'downloading', progress: 38, detail: 'HandBrakeCLI đã sẵn sàng!' });
+            onProgress({ status: 'downloading', progress: 38, detail: 'HandBrakeCLI is ready.' });
         } else {
-            onProgress({ status: 'checking', progress: 38, detail: 'HandBrakeCLI đã sẵn sàng.' });
+            onProgress({ status: 'checking', progress: 38, detail: 'HandBrakeCLI is ready.' });
         }
 
         if (!isWhisperEngineReady('cpu')) {
-            onProgress({ status: 'downloading', progress: 38, detail: 'Đang tải Whisper CPU...' });
+            onProgress({ status: 'downloading', progress: 38, detail: 'Downloading Whisper CPU...' });
             const whisperZipPath = path.join(WHISPER_CPU_DIR, 'whisper-cpu.zip');
-            await downloadFile(WHISPER_CPU_URL, whisperZipPath, (percent) => {
-                onProgress({ status: 'downloading', progress: 38 + percent * 0.08, detail: `Đang tải Whisper CPU... ${percent}%` });
+            const success = await downloadFile(WHISPER_CPU_URL, whisperZipPath, (percent) => {
+                onProgress({ status: 'downloading', progress: 38 + percent * 0.08, detail: `Downloading Whisper CPU: ${percent}%` });
             });
-            onProgress({ status: 'extracting', progress: 46, detail: 'Đang giải nén Whisper CPU...' });
+            if (!success) return false;
+            onProgress({ status: 'extracting', progress: 46, detail: 'Extracting Whisper CPU...' });
             const extracted = await extractExeFromZip(whisperZipPath, WHISPER_CPU_DIR, 'whisper-cli.exe');
             if (!extracted) {
-                onProgress({ status: 'error', progress: 46, detail: 'Không thể giải nén Whisper CPU!' });
+                onProgress({ status: 'error', progress: 46, detail: 'Failed to extract Whisper CPU!' });
                 return false;
             }
-            onProgress({ status: 'downloading', progress: 48, detail: 'Whisper CPU đã sẵn sàng!' });
+            onProgress({ status: 'downloading', progress: 48, detail: 'Whisper CPU is ready.' });
         } else {
-            onProgress({ status: 'checking', progress: 48, detail: 'Whisper CPU đã sẵn sàng.' });
+            onProgress({ status: 'checking', progress: 48, detail: 'Whisper CPU is ready.' });
         }
 
         if (!isWhisperEngineReady('gpu')) {
-            onProgress({ status: 'downloading', progress: 48, detail: 'Đang tải Whisper GPU (CUDA)...' });
+            onProgress({ status: 'downloading', progress: 48, detail: 'Downloading Whisper GPU (CUDA)...' });
             const whisperGpuZipPath = path.join(WHISPER_GPU_DIR, 'whisper-gpu.zip');
-            await downloadFile(WHISPER_GPU_URL, whisperGpuZipPath, (percent) => {
-                onProgress({ status: 'downloading', progress: 48 + percent * 0.10, detail: `Đang tải Whisper GPU... ${percent}%` });
+            const success = await downloadFile(WHISPER_GPU_URL, whisperGpuZipPath, (percent) => {
+                onProgress({ status: 'downloading', progress: 48 + percent * 0.10, detail: `Downloading Whisper GPU: ${percent}%` });
             });
-            onProgress({ status: 'extracting', progress: 58, detail: 'Đang giải nén Whisper GPU...' });
+            if (!success) return false;
+            onProgress({ status: 'extracting', progress: 58, detail: 'Extracting Whisper GPU...' });
             const extracted = await extractExeFromZip(whisperGpuZipPath, WHISPER_GPU_DIR, 'whisper-cli.exe');
             if (!extracted) {
-                onProgress({ status: 'error', progress: 58, detail: 'Không thể giải nén Whisper GPU!' });
+                onProgress({ status: 'error', progress: 58, detail: 'Failed to extract Whisper GPU!' });
                 return false;
             }
-            onProgress({ status: 'downloading', progress: 60, detail: 'Whisper GPU đã sẵn sàng!' });
+            onProgress({ status: 'downloading', progress: 60, detail: 'Whisper GPU is ready.' });
         } else {
-            onProgress({ status: 'checking', progress: 60, detail: 'Whisper GPU đã sẵn sàng.' });
+            onProgress({ status: 'checking', progress: 60, detail: 'Whisper GPU is ready.' });
         }
 
         if (!isWhisperModelReady()) {
-            onProgress({ status: 'downloading', progress: 60, detail: 'Đang tải mô hình Whisper (base)...' });
+            onProgress({ status: 'downloading', progress: 60, detail: 'Downloading Whisper base model...' });
             const baseModel = WHISPER_MODELS.find(m => m.id === 'base');
             if (!baseModel) {
-                onProgress({ status: 'error', progress: 60, detail: 'Thiếu cấu hình mô hình Whisper base!' });
+                onProgress({ status: 'error', progress: 60, detail: 'Missing Whisper base model configuration!' });
                 return false;
             }
             const baseModelPath = path.join(MODELS_DIR, baseModel.fileName);
-            await downloadFile(baseModel.url, baseModelPath, (percent) => {
-                onProgress({ status: 'downloading', progress: 60 + percent * 0.35, detail: `Đang tải mô hình Whisper... ${percent}%` });
+            const success = await downloadFile(baseModel.url, baseModelPath, (percent) => {
+                onProgress({ status: 'downloading', progress: 60 + percent * 0.35, detail: `Downloading Whisper model: ${percent}%` });
             });
+            if (!success) return false;
             writeModelConfig({ activeModel: 'base' });
-            onProgress({ status: 'downloading', progress: 95, detail: 'Mô hình Whisper đã tải xong!' });
+            onProgress({ status: 'downloading', progress: 95, detail: 'Whisper model download complete.' });
         } else {
-            onProgress({ status: 'checking', progress: 95, detail: 'Mô hình Whisper đã sẵn sàng.' });
+            onProgress({ status: 'checking', progress: 95, detail: 'Whisper model is ready.' });
         }
 
-        onProgress({ status: 'checking', progress: 98, detail: 'Đang kiểm tra phần cứng hệ thống...' });
+        onProgress({ status: 'checking', progress: 98, detail: 'Checking system hardware...' });
         await getHardwareInfo();
 
-        onProgress({ status: 'ready', progress: 100, detail: 'Môi trường đã sẵn sàng!' });
+        onProgress({ status: 'ready', progress: 100, detail: 'Environment setup complete.' });
         return true;
 
     } catch (error) {
         console.error('Environment setup failed:', error);
-        onProgress({ status: 'error', progress: 0, detail: `Lỗi: ${error}` });
+        onProgress({ status: 'error', progress: 0, detail: `Error: ${error}` });
         return false;
     }
 };

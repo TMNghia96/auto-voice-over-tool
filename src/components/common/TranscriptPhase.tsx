@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { FileText, Play, CheckCircle2, RotateCcw, Volume2, Pause, Cpu, Zap, Cloud, Download, Check, Sparkles, ArrowRight, Globe, Wrench } from "lucide-react";
+import { FileText, Play, CheckCircle2, RotateCcw, Volume2, Pause, Cpu, Zap, Cloud, Download, Check, Sparkles, ArrowRight, Globe, Wrench, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { parseSrt, formatTimeShort, timeToSeconds, type SrtEntry, WHISPER_LANGUAGES, LANGUAGE_TO_COUNTRY } from "@/lib/utils";
 import ReactCountryFlag from "react-country-flag";
@@ -37,7 +37,7 @@ const ENGINES: EngineOption[] = [
         id: 'whisper-cpu',
         name: 'Whisper',
         subtitle: 'CPU',
-        description: 'Chạy trên CPU, tương thích mọi máy tính',
+        description: 'Chạy trên CPU, tương thích với mọi máy tính',
         icon: <Cpu className="w-6 h-6" />,
         color: 'text-blue-500',
         bgColor: 'bg-blue-500/10',
@@ -47,8 +47,8 @@ const ENGINES: EngineOption[] = [
     {
         id: 'whisper-gpu',
         name: 'Whisper',
-        subtitle: 'NVIDIA GPU',
-        description: 'Tăng tốc bằng CUDA, nhanh gấp 5-10 lần',
+        subtitle: 'Card NVIDIA',
+        description: 'Tăng tốc bằng CUDA, nhanh hơn 5-10 lần',
         icon: <Zap className="w-6 h-6" />,
         color: 'text-green-500',
         bgColor: 'bg-green-500/10',
@@ -59,7 +59,7 @@ const ENGINES: EngineOption[] = [
         id: 'whisper-vulkan',
         name: 'Whisper',
         subtitle: 'AMD / NVIDIA / Intel',
-        description: 'Dùng Vulkan, hỗ trợ hầu hết các GPU rời',
+        description: 'Sử dụng Vulkan, hỗ trợ đa số card đồ họa rời',
         icon: <Sparkles className="w-6 h-6" />,
         color: 'text-orange-500',
         bgColor: 'bg-orange-500/10',
@@ -70,7 +70,7 @@ const ENGINES: EngineOption[] = [
         id: 'assemblyai',
         name: 'AssemblyAI',
         subtitle: 'Cloud API',
-        description: 'API đám mây, chính xác cao, cần API key',
+        description: 'API Đám mây, độ chính xác cao, yêu cầu API key',
         icon: <Cloud className="w-6 h-6" />,
         color: 'text-purple-500',
         bgColor: 'bg-purple-500/10',
@@ -81,7 +81,7 @@ const ENGINES: EngineOption[] = [
 
 export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => {
     const { id } = useParams();
-    const [phase, setPhase] = useState<"idle" | "processing" | "done">("idle");
+    const [phase, setPhase] = useState<"idle" | "processing" | "done" | "error">("idle");
     const [progress, setProgress] = useState<TranscriptProgress>({
         status: "idle",
         progress: 0,
@@ -125,6 +125,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                 window.api.checkWhisperEngine('gpu'),
                 window.api.checkWhisperEngine('vulkan'),
             ]);
+            console.log("[TranscriptPhase] Engine status:", { cpu: cpuReady, gpu: gpuReady, vulkan: vulkanReady });
             setEngineStatus({ cpu: cpuReady, gpu: gpuReady, vulkan: vulkanReady });
         } catch (err) {
             console.error("Failed to check engines:", err);
@@ -177,7 +178,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                 setPhase("done");
             }
             if (data.status === "error") {
-                setPhase("idle");
+                setPhase("error");
             }
         });
 
@@ -239,10 +240,18 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
 
 
     const handleStartTranscript = () => {
-        if (!projectPath || !selectedEngine) return;
-        setPhase("processing");
-        setProgress({ status: "preparing", progress: 0, detail: "Đang chuẩn bị..." });
-        window.api.transcribeAudio(projectPath, selectedEngine, selectedLanguage);
+        try {
+            console.log("[TranscriptPhase] handleStartTranscript called", { projectPath, selectedEngine, selectedLanguage });
+            if (!projectPath || !selectedEngine) {
+                console.warn("[TranscriptPhase] Missing projectPath or selectedEngine", { projectPath, selectedEngine });
+                return;
+            }
+            setPhase("processing");
+            setProgress({ status: "preparing", progress: 0, detail: "Preparing..." });
+            window.api.transcribeAudio(projectPath, selectedEngine, selectedLanguage);
+        } catch (error) {
+            console.error("[TranscriptPhase] Failed in handleStartTranscript:", error);
+        }
     };
 
     const handleRetranscript = () => {
@@ -323,6 +332,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
         return (
             <div className="flex items-center justify-center h-full">
                 <Spinner className="w-8 h-8 animate-spin text-primary" />
+                <span className="ml-2 text-sm text-muted-foreground">Đang kiểm tra môi trường...</span>
             </div>
         );
     }
@@ -343,7 +353,11 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                                 <button
                                     key={engine.id}
                                     disabled={engine.disabled || (engine.id === 'whisper-gpu' && !hasNvidiaGpu) || (engine.id === 'whisper-vulkan' && !hasVulkanGpu)}
-                                    onClick={() => !(engine.disabled || (engine.id === 'whisper-gpu' && !hasNvidiaGpu) || (engine.id === 'whisper-vulkan' && !hasVulkanGpu)) && setSelectedEngine(engine.id)}
+                                    onClick={() => {
+                                        const disabled = engine.disabled || (engine.id === 'whisper-gpu' && !hasNvidiaGpu) || (engine.id === 'whisper-vulkan' && !hasVulkanGpu);
+                                        console.log(`[TranscriptPhase] Engine button clicked: ${engine.id}, disabled: ${disabled}`);
+                                        if (!disabled) setSelectedEngine(engine.id);
+                                    }}
                                     className={`
                                         relative flex flex-col items-center text-center p-6 rounded-xl border-2 transition-all duration-200 cursor-pointer
                                         ${engine.disabled
@@ -381,7 +395,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                                             {engine.id === 'whisper-gpu' && !hasNvidiaGpu ? "Không hỗ trợ CUDA" :
                                                 engine.id === 'whisper-vulkan' && !hasVulkanGpu ? "Không hỗ trợ GPU" : "Sắp có"}
                                         </span>
-                                    ) : engine.id.startsWith("whisper") ? (
+                                    ) : (engine.id === 'whisper-cpu' || engine.id === 'whisper-gpu') ? (
                                         <div
                                             onClick={(e) => e.stopPropagation()}
                                             className="w-full mt-auto flex justify-center px-4"
@@ -401,40 +415,85 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                                                     ))}
                                                     {models.filter(m => m.downloaded).length === 0 && (
                                                         <SelectItem value="none" disabled className="text-xs">
-                                                            Phải tải 1 model
+                                                            Vui lòng tải model trước
                                                         </SelectItem>
                                                     )}
                                                 </SelectContent>
                                             </Select>
+                                        </div>
+                                    ) : engine.id === 'whisper-vulkan' ? (
+                                        <div className="flex flex-col items-center gap-3 w-full">
+                                            <div
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="w-full flex justify-center px-4"
+                                            >
+                                                <Select
+                                                    value={activeModel}
+                                                    onValueChange={handleModelSelect}
+                                                >
+                                                    <SelectTrigger className="h-7 w-auto min-w-[130px] rounded-full text-[11px] font-medium bg-background/50 border-primary/20 hover:border-primary/50 shadow-sm flex items-center justify-between gap-2 px-3">
+                                                        <SelectValue placeholder="Chọn model" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {models.filter(m => m.downloaded).map(m => (
+                                                            <SelectItem key={m.id} value={m.id} className="text-xs">
+                                                                {m.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                        {models.filter(m => m.downloaded).length === 0 && (
+                                                            <SelectItem value="none" disabled className="text-xs">
+                                                                Vui lòng tải model trước
+                                                            </SelectItem>
+                                                        )}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            {isCompiling ? (
+                                                <div className="w-full space-y-1 px-2">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Spinner className="w-3 h-3 animate-spin text-orange-500" />
+                                                        <span className="text-[10px] text-orange-600 font-medium truncate">
+                                                            {compileProgress?.message || 'Đang cài đặt...'}
+                                                        </span>
+                                                    </div>
+                                                    <Progress value={compileProgress?.progress || 0} className="w-full h-1" />
+                                                </div>
+                                            ) : isReady ? (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 border border-green-500/20">
+                                                        <Check className="w-3 h-3" />
+                                                        Sẵn sàng
+                                                    </span>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleCompileVulkan();
+                                                        }}
+                                                        title="Cài đặt lại công cụ"
+                                                        className="p-1 rounded-full hover:bg-orange-500/10 text-orange-600 border border-transparent hover:border-orange-500/20 transition-colors"
+                                                    >
+                                                        <RotateCcw className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleCompileVulkan();
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/20 hover:bg-orange-500/20 transition-colors cursor-pointer"
+                                                >
+                                                    <Wrench className="w-3 h-3" />
+                                                    Tự cài đặt
+                                                </button>
+                                            )}
                                         </div>
                                     ) : isReady ? (
                                         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 border border-green-500/20">
                                             <Check className="w-3 h-3" />
                                             Sẵn sàng
                                         </span>
-                                    ) : engine.id === 'whisper-vulkan' ? (
-                                        isCompiling ? (
-                                            <div className="w-full space-y-1 px-2">
-                                                <div className="flex items-center gap-1.5">
-                                                    <Spinner className="w-3 h-3 animate-spin text-orange-500" />
-                                                    <span className="text-[10px] text-orange-600 font-medium truncate">
-                                                        {compileProgress?.message || 'Đang cài đặt...'}
-                                                    </span>
-                                                </div>
-                                                <Progress value={compileProgress?.progress || 0} className="w-full h-1" />
-                                            </div>
-                                        ) : (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleCompileVulkan();
-                                                }}
-                                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/20 hover:bg-orange-500/20 transition-colors cursor-pointer"
-                                            >
-                                                <Wrench className="w-3 h-3" />
-                                                Cài đặt tự động
-                                            </button>
-                                        )
                                     ) : (
                                         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/20">
                                             <Download className="w-3 h-3" />
@@ -449,7 +508,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                     <div className="w-full space-y-2">
                         <div className="flex items-center gap-2 mb-1">
                             <Globe className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">Ngôn ngữ audio</span>
+                            <span className="text-sm font-medium">Ngôn ngữ Audio</span>
                         </div>
                         <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
                             <SelectTrigger className="w-full">
@@ -475,7 +534,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                            Chọn ngôn ngữ chính xác sẽ giúp Whisper nhận dạng tốt hơn. Để "Tự động" nếu không chắc.
+                            Chọn đúng ngôn ngữ giúp nhận dạng chính xác hơn. Có thể để "Auto" nếu không chắc chắn.
                         </p>
                     </div>
 
@@ -486,7 +545,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                         className="shadow-lg shadow-primary/20 px-8"
                     >
                         <Play className="w-4 h-4 mr-2" />
-                        Bắt đầu nhận dạng
+                        Bắt đầu Nhận dạng
                     </Button>
                 </div>
             )}
@@ -503,6 +562,29 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                 </div>
             )}
 
+            { /* Error Phase */}
+            {phase === "error" && (
+                <div className="flex flex-col items-center gap-6 w-full max-w-lg animate-in fade-in duration-300">
+                    <div className="text-center space-y-4">
+                        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto text-red-500">
+                            <AlertCircle className="w-8 h-8" />
+                        </div>
+                        <h2 className="text-xl font-bold text-red-500">Đã xảy ra lỗi</h2>
+                        <div className="bg-muted/50 p-4 rounded-lg text-sm text-foreground/80 w-full whitespace-pre-wrap text-left border">
+                            {progress.detail}
+                        </div>
+                    </div>
+                    <Button variant="outline" onClick={() => {
+                        setPhase("idle");
+                        setProgress({ status: "idle", progress: 0, detail: "" });
+                        checkEngines();
+                    }}>
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Thử lại
+                    </Button>
+                </div>
+            )}
+
             { }
             {phase === "done" && srtEntries.length > 0 && (
                 <div className="w-full h-full flex flex-col gap-4 animate-in fade-in duration-300 overflow-hidden">
@@ -512,7 +594,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                             <CheckCircle2 className="w-5 h-5 text-green-500" />
                             <div>
                                 <h2 className="text-lg font-bold">Phụ đề đã sẵn sàng</h2>
-                                <p className="text-xs text-muted-foreground">{srtEntries.length} đoạn • {srtPath}</p>
+                                <p className="text-xs text-muted-foreground">{srtEntries.length} phân đoạn • {srtPath}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -522,7 +604,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                                 ) : (
                                     <Sparkles className="w-3.5 h-3.5 mr-1.5" />
                                 )}
-                                Tối ưu
+                                Tối ưu hóa
                             </Button>
                             <Button variant="outline" size="sm" onClick={handleRetranscript}>
                                 <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
@@ -544,7 +626,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                             <div className="bg-card border rounded-xl shadow-sm flex flex-col overflow-hidden h-full">
                                 <div className="flex items-center gap-2 p-4 border-b bg-muted/50">
                                     <Volume2 className="w-4 h-4 text-primary" />
-                                    <span className="text-sm font-medium">Trình phát âm thanh</span>
+                                    <span className="text-sm font-medium">Trình phát Audio</span>
                                 </div>
 
                                 <div className="flex-1 flex items-center justify-center p-6">
@@ -560,7 +642,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                                             {activeSegment !== null ? (
                                                 <div className="space-y-2">
                                                     <p className="text-xs font-mono text-primary font-medium">
-                                                        Đoạn #{activeSegment}
+                                                        Phân đoạn #{activeSegment}
                                                     </p>
                                                     <p className="text-sm text-foreground leading-relaxed px-2 max-h-[200px] overflow-y-auto">
                                                         {srtEntries.find(e => e.index === activeSegment)?.text || ''}
@@ -568,7 +650,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
                                                 </div>
                                             ) : (
                                                 <p className="text-xs text-muted-foreground">
-                                                    Nhấn vào đoạn phụ đề để nghe
+                                                    Bấm vào một phân đoạn phụ đề để phát
                                                 </p>
                                             )}
                                         </div>
@@ -646,7 +728,7 @@ export const TranscriptPhase = ({ onComplete }: { onComplete?: () => void }) => 
             { }
             {phase === "done" && srtEntries.length === 0 && (
                 <div className="text-center space-y-4 animate-in fade-in duration-300">
-                    <p className="text-muted-foreground">Không có nội dung phụ đề.</p>
+                    <p className="text-muted-foreground">Không tìm thấy nội dung phụ đề.</p>
                     <Button variant="outline" onClick={handleRetranscript}>
                         Thử lại
                     </Button>

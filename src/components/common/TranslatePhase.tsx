@@ -4,13 +4,14 @@ import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
-    
+
     Languages,
     CheckCircle2,
     Play,
     Settings,
     FileText,
-    ArrowRight} from "lucide-react";
+    ArrowRight
+} from "lucide-react";
 import { parseSrt, stringifySrt, TARGET_LANGUAGES, type SrtEntry } from "@/lib/utils";
 import { useProcessContext } from "@/stores/ProcessStore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -138,7 +139,8 @@ ${userPrompt}`.trim();
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
-                            "Authorization": `Bearer ${apiKey}`},
+                            "Authorization": `Bearer ${apiKey}`
+                        },
                         body: JSON.stringify({
                             model: "deepseek-chat",
                             messages: [
@@ -148,9 +150,12 @@ ${userPrompt}`.trim();
                                 },
                                 {
                                     role: "user",
-                                    content: textsToTranslate},
+                                    content: textsToTranslate
+                                },
                             ],
-                            temperature: 0.3})});
+                            temperature: 0.3
+                        })
+                    });
 
                     if (!response.ok) throw new Error(await response.text());
 
@@ -170,7 +175,8 @@ ${userPrompt}`.trim();
                     setProgress({
                         current: completedCount,
                         total: srtEntries.length,
-                        percent: Math.round((completedCount / srtEntries.length) * 100)});
+                        percent: Math.round((completedCount / srtEntries.length) * 100)
+                    });
                 }
             };
 
@@ -222,9 +228,9 @@ ${userPrompt}`.trim();
             {phase === "no-srt" && (
                 <div className="text-center space-y-4 animate-in fade-in duration-300">
                     <FileText className="w-16 h-16 text-muted-foreground/30 mx-auto" />
-                    <h2 className="text-xl font-bold">Chưa có phụ đề</h2>
+                    <h2 className="text-xl font-bold">Không tìm thấy Phụ đề</h2>
                     <p className="text-sm text-muted-foreground">
-                        Hãy tạo phụ đề trước khi dịch. Quay lại tab "Tạo phụ đề" để bắt đầu.
+                        Vui lòng tạo phụ đề trước. Quay lại tab "Phụ đề" để bắt đầu.
                     </p>
                 </div>
             )}
@@ -233,9 +239,9 @@ ${userPrompt}`.trim();
                 <div className="w-full max-w-lg animate-in fade-in duration-300 space-y-6">
                     <div className="text-center space-y-2">
                         <Languages className="w-12 h-12 text-primary mx-auto" />
-                        <h2 className="text-xl font-bold">Dịch phụ đề</h2>
+                        <h2 className="text-xl font-bold">Dịch Phụ đề</h2>
                         <p className="text-sm text-muted-foreground">
-                            {srtEntries.length} đoạn phụ đề sẵn sàng để dịch
+                            {srtEntries.length} phân đoạn phụ đề đã sẵn sàng để dịch
                         </p>
                     </div>
 
@@ -243,10 +249,10 @@ ${userPrompt}`.trim();
                     {!hasApiKey && (
                         <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 text-center">
                             <p className="text-sm text-amber-600 font-medium">
-                                ⚠️ Chưa có API key DeepSeek
+                                ⚠️ Không tìm thấy API key DeepSeek
                             </p>
                             <p className="text-xs text-muted-foreground mt-1">
-                                Vui lòng thêm API key ở trang chủ để sử dụng tính năng dịch.
+                                Vui lòng thêm API key trong Cài đặt ở Trang chủ để sử dụng tính năng phiên dịch.
                             </p>
                         </div>
                     )}
@@ -256,7 +262,7 @@ ${userPrompt}`.trim();
                         <div className="flex items-center justify-between">
                             <h3 className="text-sm font-semibold">Chọn Prompt & Ngôn ngữ</h3>
                             <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => window.api.openSettingsWindow()}>
-                                <Settings className="w-3.5 h-3.5 mr-1" /> Cài đặt prompt
+                                <Settings className="w-3.5 h-3.5 mr-1" /> Cài đặt Prompt
                             </Button>
                         </div>
 
@@ -300,7 +306,7 @@ ${userPrompt}`.trim();
                         disabled={!hasApiKey}
                     >
                         <Play className="w-4 h-4" />
-                        Bắt đầu dịch
+                        Bắt đầu Phiên dịch
                         <ArrowRight className="w-4 h-4" />
                     </Button>
                 </div>
@@ -309,9 +315,9 @@ ${userPrompt}`.trim();
             {phase === "translating" && (
                 <div className="w-full max-w-lg space-y-6 animate-in fade-in duration-300">
                     <div className="text-center space-y-2">
-                        <h2 className="text-xl font-bold">Đang dịch...</h2>
+                        <h2 className="text-xl font-bold">Đang phiên dịch...</h2>
                         <p className="text-sm text-muted-foreground">
-                            {progress.current} / {progress.total} đoạn ({progress.percent}%)
+                            {progress.current} / {progress.total} phân đoạn ({progress.percent}%)
                         </p>
                     </div>
                     <Progress value={progress.percent} className="w-full" />
@@ -325,11 +331,11 @@ ${userPrompt}`.trim();
                         <div className="flex items-center gap-3">
                             <CheckCircle2 className="w-5 h-5 text-green-500" />
                             <div>
-                                <h2 className="text-lg font-bold">Dịch xong!</h2>
+                                <h2 className="text-lg font-bold">Đã hoàn tất Phiên dịch!</h2>
                                 <p className="text-xs text-muted-foreground">
-                                    {translatedEntries.length} đoạn đã được dịch sang {TARGET_LANGUAGES.find(l => l.code === selectedLang)?.name}
+                                    {translatedEntries.length} phân đoạn đã được dịch sang {TARGET_LANGUAGES.find(l => l.code === selectedLang)?.name}
                                     <br />
-                                    <span className="text-primary">Đã lưu file vào thư mục translate/</span>
+                                    <span className="text-primary">Đã lưu file vào thư mục translation/</span>
                                 </p>
                             </div>
                         </div>

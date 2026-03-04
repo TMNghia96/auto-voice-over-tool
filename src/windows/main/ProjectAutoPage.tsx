@@ -84,7 +84,7 @@ export const ProjectAutoPage = () => {
         try {
             // Phase 1: Check if input already done
             setCurrentPhase("input");
-            setPhaseDetail("Kiểm tra video...");
+            setPhaseDetail("Checking video...");
             setPhaseProgress(0);
 
             const metadata = await window.api.getProjectMetadata(projectPath);
@@ -92,7 +92,7 @@ export const ProjectAutoPage = () => {
                 markPhaseCompleted("input");
                 setPhaseProgress(100);
             } else {
-                setError("Chưa có video. Vui lòng nhập video ở chế độ thủ công trước.");
+                setError("No video found. Please import a video in manual mode first.");
                 return;
             }
             if (abortRef.current) return;
@@ -106,7 +106,7 @@ export const ProjectAutoPage = () => {
             if (existingSrt) {
                 markPhaseCompleted("transcript");
                 setPhaseProgress(100);
-                setPhaseDetail("Phụ đề đã có sẵn");
+                setPhaseDetail("Phụ đề đã tồn tại");
             } else {
                 await new Promise<void>((resolve, reject) => {
                     window.api.onTranscriptProgress((progress: any) => {
@@ -120,7 +120,7 @@ export const ProjectAutoPage = () => {
                             setPhaseProgress(100);
                             resolve();
                         } else {
-                            reject(new Error("Tạo phụ đề thất bại"));
+                            reject(new Error("Lỗi tạo phụ đề"));
                         }
                     });
                     window.api.transcribeAudio(projectPath, whisperEngine, sourceLanguage);
@@ -130,14 +130,14 @@ export const ProjectAutoPage = () => {
 
             // Phase 3: Translate
             setCurrentPhase("translate");
-            setPhaseDetail("Kiểm tra bản dịch...");
+            setPhaseDetail("Đang dịch phụ đề...");
             setPhaseProgress(0);
 
             const translatedContent = await window.api.getTranslatedSrt(projectPath, targetLanguage);
             if (translatedContent) {
                 markPhaseCompleted("translate");
                 setPhaseProgress(100);
-                setPhaseDetail("Bản dịch đã có sẵn");
+                setPhaseDetail("Bản dịch đã tồn tại");
             } else {
                 // Need to translate
                 const { parseSrt, stringifySrt } = await import("@/lib/utils");
@@ -225,21 +225,21 @@ ${userPrompt}`.trim();
 
             // Phase 4: Audio
             setCurrentPhase("audio");
-            setPhaseDetail("Tạo audio...");
+            setPhaseDetail("Đang tạo âm thanh...");
             setPhaseProgress(0);
 
             const existingAudioFiles = await window.api.listGeneratedAudio(projectPath);
             if (existingAudioFiles && existingAudioFiles.length > 0) {
                 markPhaseCompleted("audio");
                 setPhaseProgress(100);
-                setPhaseDetail("Audio đã có sẵn");
+                setPhaseDetail("Âm thanh đã tồn tại");
             } else {
                 await new Promise<void>((resolve, reject) => {
                     window.api.onAudioGenerateProgress((progress: any) => {
                         if (progress.current !== undefined && progress.total) {
                             const pct = Math.round((progress.current / progress.total) * 100);
                             setPhaseProgress(pct);
-                            setPhaseDetail(`Đang tạo audio... ${progress.current}/${progress.total}`);
+                            setPhaseDetail(`Đang tạo âm thanh... ${progress.current}/${progress.total}`);
                         }
                         if (progress.status === "done") {
                             window.api.removeAudioGenerateListeners();
@@ -248,7 +248,7 @@ ${userPrompt}`.trim();
                             resolve();
                         } else if (progress.status === "error") {
                             window.api.removeAudioGenerateListeners();
-                            reject(new Error("Tạo audio thất bại"));
+                            reject(new Error("Lỗi tạo âm thanh"));
                         }
                     });
 
@@ -259,7 +259,7 @@ ${userPrompt}`.trim();
 
             // Phase 5: Final video
             setCurrentPhase("final");
-            setPhaseDetail("Tạo video cuối...");
+            setPhaseDetail("Đang tạo video thành phẩm...");
             setPhaseProgress(0);
 
             await new Promise<void>((resolve, reject) => {
@@ -274,7 +274,7 @@ ${userPrompt}`.trim();
                         resolve();
                     } else if (progress.status === "error") {
                         window.api.removeFinalVideoListeners();
-                        reject(new Error("Tạo video cuối thất bại"));
+                        reject(new Error("Lỗi ghép video."));
                     }
                 });
 
@@ -283,11 +283,11 @@ ${userPrompt}`.trim();
 
             // Done!
             setCurrentPhase("done");
-            setPhaseDetail("Hoàn tất pipeline!");
+            setPhaseDetail("Hoàn thành quá trình tự động!");
             setPhaseProgress(100);
 
         } catch (err: any) {
-            setError(err?.message || "Có lỗi xảy ra");
+            setError(err?.message || "Đã xảy ra lỗi");
         }
     };
 
@@ -316,26 +316,26 @@ ${userPrompt}`.trim();
                         >
                             <div className="text-center space-y-2">
                                 <Sparkles className="w-12 h-12 text-primary mx-auto" />
-                                <h2 className="text-xl font-bold">Xử lý tự động</h2>
+                                <h2 className="text-xl font-bold">Quá Trình Tự Động</h2>
                                 <p className="text-sm text-muted-foreground">
-                                    Cấu hình pipeline và tool sẽ tự động chạy qua tất cả các bước.
+                                    Cấu hình và công cụ sẽ tự động chạy qua tất cả các bước.
                                 </p>
                             </div>
 
                             {!hasApiKey && (
                                 <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 text-center">
                                     <p className="text-sm text-amber-600 font-medium">
-                                        ⚠️ Chưa có API key DeepSeek
+                                        ⚠️ Không tìm thấy DeepSeek API key
                                     </p>
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        Cần API key để dịch phụ đề. Thêm ở Cài đặt.
+                                        Cần có API key để dịch phụ đề. Vui lòng thêm trong Cài đặt.
                                     </p>
                                 </div>
                             )}
 
                             <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">Whisper Engine</label>
+                                    <label className="text-sm font-medium">Công cụ dịch (Whisper Engine)</label>
                                     <Select value={whisperEngine} onValueChange={setWhisperEngine}>
                                         <SelectTrigger className="w-full">
                                             <SelectValue />
@@ -350,7 +350,7 @@ ${userPrompt}`.trim();
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">Ngôn ngữ nguồn (audio gốc)</label>
+                                    <label className="text-sm font-medium">Ngôn ngữ nguồn (Video gốc)</label>
                                     <Select value={sourceLanguage} onValueChange={setSourceLanguage}>
                                         <SelectTrigger className="w-full">
                                             <SelectValue />
@@ -372,7 +372,7 @@ ${userPrompt}`.trim();
 
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between">
-                                        <label className="text-sm font-medium">Prompt dịch</label>
+                                        <label className="text-sm font-medium">Prompt Dịch</label>
                                         <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => window.api.openSettingsWindow()}>
                                             <Settings className="w-3 h-3 mr-1" /> Quản lý
                                         </Button>
@@ -390,7 +390,7 @@ ${userPrompt}`.trim();
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">Ngôn ngữ đích (dịch sang)</label>
+                                    <label className="text-sm font-medium">Ngôn ngữ đích (Bản dịch)</label>
                                     <Select value={targetLanguage} onValueChange={setTargetLanguage}>
                                         <SelectTrigger className="w-full">
                                             <SelectValue />
@@ -416,7 +416,7 @@ ${userPrompt}`.trim();
                                 disabled={!hasApiKey || !projectPath}
                             >
                                 <Play className="w-4 h-4" />
-                                Bắt đầu xử lý tự động
+                                Bắt đầu
                             </Button>
 
                             {error && (
@@ -440,7 +440,7 @@ ${userPrompt}`.trim();
                             <div className="text-center space-y-2">
                                 <Spinner className="w-12 h-12 text-primary mx-auto animate-spin" />
                                 <h2 className="text-xl font-bold">
-                                    {AUTO_PHASE_LABELS.find(p => p.key === currentPhase)?.label || "Đang xử lý"}
+                                    {AUTO_PHASE_LABELS.find(p => p.key === currentPhase)?.label || "Processing"}
                                 </h2>
                                 <p className="text-sm text-muted-foreground">{phaseDetail}</p>
                             </div>
@@ -449,7 +449,7 @@ ${userPrompt}`.trim();
                                 <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-center">
                                     <p className="text-sm text-destructive font-medium">{error}</p>
                                     <Button variant="outline" size="sm" className="mt-2" onClick={() => navigate(`/project/${id}`)}>
-                                        Chuyển sang chế độ thủ công
+                                        Chuyển sang Chế độ Thủ Công
                                     </Button>
                                 </div>
                             )}
@@ -472,16 +472,16 @@ ${userPrompt}`.trim();
                             >
                                 <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto" />
                             </motion.div>
-                            <h2 className="text-2xl font-bold">Hoàn tất!</h2>
+                            <h2 className="text-2xl font-bold">Thành Công!</h2>
                             <p className="text-sm text-muted-foreground">
-                                Pipeline đã xử lý xong toàn bộ. Video cuối đã được tạo thành công.
+                                Đã hoàn thành mọi công đoạn. Video thành phẩm đã được tạo.
                             </p>
                             <div className="flex gap-3 justify-center">
                                 <Button variant="outline" onClick={() => navigate(`/project/${id}?tab=final`)}>
-                                    Xem video
+                                    Xem Video
                                 </Button>
                                 <Button onClick={() => navigate("/")}>
-                                    Về trang chủ
+                                    Về Trang Chủ
                                 </Button>
                             </div>
                         </motion.div>

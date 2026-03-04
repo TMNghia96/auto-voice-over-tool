@@ -2,7 +2,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, useSearchParams, matchPath } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Sparkles, CheckCircle2, Circle} from "lucide-react";
+import { ArrowLeft, Sparkles, CheckCircle2, Circle } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProcessContext } from "@/stores/ProcessStore";
 import { useAutoPipeline, AUTO_PHASE_LABELS } from "@/stores/AutoPipelineStore";
@@ -30,7 +30,8 @@ export const Header = () => {
         transcript: false,
         translate: false,
         audio: false,
-        final: false});
+        final: false
+    });
 
     useEffect(() => {
         if (projectId) {
@@ -140,7 +141,13 @@ export const Header = () => {
                                         ) : (
                                             <Circle className="w-4 h-4 shrink-0" />
                                         )}
-                                        <span className="whitespace-nowrap">{phase.label}</span>
+                                        <span className="whitespace-nowrap">{
+                                            phase.key === "input" ? "Nhập liệu" :
+                                                phase.key === "transcript" ? "Phụ đề" :
+                                                    phase.key === "translate" ? "Phiên dịch" :
+                                                        phase.key === "audio" ? "Âm thanh" :
+                                                            phase.key === "final" ? "Thành phẩm" : phase.label
+                                        }</span>
                                     </div>
                                     {i < AUTO_PHASE_LABELS.length - 1 && (
                                         <div className="flex-1 h-px mx-2 bg-border relative overflow-hidden">
@@ -171,14 +178,16 @@ export const Header = () => {
                     style={phaseStatus.download && !isProcessing ? {
                         background: "var(--background)",
                         border: "none",
-                        padding: "6px 12px"} : undefined}
+                        padding: "6px 12px"
+                    } : undefined}
                 >
                     {phaseStatus.download && !isProcessing && (
                         <>
                             <span
                                 className="absolute -inset-[1.5px] rounded-[7px] -z-10 animate-[gradient-spin_3s_linear_infinite]"
                                 style={{
-                                    background: "conic-gradient(from var(--gradient-angle), #4285f4, #ea4335, #fbbc04, #34a853, #4285f4)"}}
+                                    background: "conic-gradient(from var(--gradient-angle), #4285f4, #ea4335, #fbbc04, #34a853, #4285f4)"
+                                }}
                             />
                             <span className="absolute inset-0 rounded-md bg-background -z-[5]" />
                         </>

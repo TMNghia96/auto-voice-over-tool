@@ -4,14 +4,15 @@ import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
-	
+
 	Film,
 	CheckCircle2,
 	FileText,
 	AlertCircle,
 	Clapperboard,
 	FolderOpen,
-	RefreshCw} from "lucide-react";
+	RefreshCw
+} from "lucide-react";
 import { VideoPlayer } from "./VideoPlayer";
 import { useProcessContext } from "@/stores/ProcessStore";
 
@@ -174,7 +175,7 @@ export const CreateFinalVideoPhase = ({ onComplete }: { onComplete?: () => void 
 				{ }
 				<div className='text-center space-y-2'>
 					<h2 className='text-xl font-bold'>
-						Đang tạo video final...
+						Đang tạo Video Thành phẩm...
 					</h2>
 					<p className='text-sm text-muted-foreground'>
 						{progress?.detail || "Đang chuẩn bị..."}
@@ -197,7 +198,7 @@ export const CreateFinalVideoPhase = ({ onComplete }: { onComplete?: () => void 
 						{progress.current !== undefined &&
 							progress.total !== undefined && (
 								<p className='text-xs text-muted-foreground text-center'>
-									{progress.current} / {progress.total} đoạn
+									{progress.current} / {progress.total} phân đoạn
 								</p>
 							)}
 					</div>
@@ -226,17 +227,16 @@ export const CreateFinalVideoPhase = ({ onComplete }: { onComplete?: () => void 
 
 				{ }
 				<div className='text-center space-y-2'>
-					<h2 className='text-xl font-bold'>Tạo video final</h2>
+					<h2 className='text-xl font-bold'>Tạo Video Thành phẩm</h2>
 					<p className='text-sm text-muted-foreground'>
-						Ghép video gốc với audio đã tạo, giữ nguyên chất lượng
-						video ban đầu.
+						Ghép video gốc với âm thanh đã tạo, giữ nguyên chất lượng video gốc.
 					</p>
 				</div>
 
 				{ }
 				<Button className='w-full gap-2' onClick={handleStartCreate}>
 					<Film className='w-4 h-4' />
-					Bắt đầu tạo
+					Bắt đầu Tạo
 				</Button>
 			</div>
 		);
@@ -257,7 +257,7 @@ export const CreateFinalVideoPhase = ({ onComplete }: { onComplete?: () => void 
 				{ }
 				<div className='space-y-2'>
 					<p className='text-xs text-muted-foreground font-semibold uppercase tracking-wide'>
-						Video Path
+						Đường dẫn Video
 					</p>
 					<p
 						className='text-xs text-muted-foreground font-mono truncate break-words'

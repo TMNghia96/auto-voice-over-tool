@@ -12,6 +12,7 @@ export const setupAudioIpc = () => {
     });
 
     ipcMain.on("transcribe-audio", (event, projectPath, engine, language) => {
+        console.log(`[IPC] Received transcribe-audio: engine=${engine}, language=${language}, path=${projectPath}`);
         transcribeAudio(
             projectPath,
             (progress) => {

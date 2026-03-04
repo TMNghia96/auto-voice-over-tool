@@ -78,8 +78,10 @@ const runWhisper = (
 
         let lastProgress = 0;
 
+        let stderrOutput = '';
         proc.stderr.on('data', (data) => {
             const text = data.toString();
+            stderrOutput += text;
             console.log('[whisper stderr]', text);
 
             const progressMatch = text.match(/progress\s*=\s*(\d+)%/);
@@ -90,7 +92,7 @@ const runWhisper = (
                     onProgress({
                         status: 'transcribing',
                         progress: 30 + pct * 0.7, // 30-100% range
-                        detail: `Đang chuyển đổi giọng nói... ${pct}%`
+                        detail: `Transcribing voice... ${pct}%`
                     });
                 }
             }
@@ -108,7 +110,7 @@ const runWhisper = (
                     onProgress({
                         status: 'transcribing',
                         progress: 30 + pct * 0.7,
-                        detail: `Đang chuyển đổi giọng nói... ${pct}%`
+                        detail: `Transcribing voice... ${pct}%`
                     });
                 }
             }
@@ -120,13 +122,35 @@ const runWhisper = (
             if (code === 0 && fs.existsSync(srtPath)) {
                 resolve(srtPath);
             } else {
-                console.error('Whisper failed or SRT not found. Code:', code, 'Expected:', srtPath);
+                if (code === 3221225781) {
+                    onProgress({
+                        status: 'error',
+                        progress: 0,
+                        detail: 'Whisper failed with a memory access error (0xC0000005).\n\n' +
+                            'This is likely due to missing MinGW DLLs or incompatible GPU drivers. Please try:\n' +
+                            '1. Updating your AMD Graphics Drivers to the latest version.\n' +
+                            '2. Switching to a smaller model (e.g., "base" or "small") in the Models tab.\n' +
+                            '3. Clicking "Re-install" in the Recognition tab to re-verify the engine binaries.\n' +
+                            '4. If you have an NVIDIA GPU, specifically select the "GPU (CUDA)" engine instead.'
+                    });
+                    resolve(null);
+                    return;
+                }
+
+                let errorMessage = `Whisper failed (Exit code: ${code}).`;
+                if (code === 1) {
+                    errorMessage = 'Parameter or model file error. Check if the model is downloaded.';
+                }
+
+                console.error('Whisper failed.', errorMessage, 'Stderr:', stderrOutput);
+                onProgress({ status: 'error', progress: 0, detail: errorMessage });
                 resolve(null);
             }
         });
 
         proc.on('error', (err) => {
             console.error('Whisper spawn error:', err);
+            onProgress({ status: 'error', progress: 0, detail: `Could not start Whisper: ${err.message}` });
             resolve(null);
         });
     });
@@ -175,11 +199,13 @@ export const transcribeAudio = async (
             engine === 'whisper-gpu' ? 'gpu' :
                 engine === 'whisper-vulkan' ? 'vulkan' : 'cpu';
 
+        console.log(`Transcript engine requested: ${engine}, using variant: ${whisperVariant}`);
+
         if (!isWhisperEngineReady(whisperVariant)) {
             const engineLabel = whisperVariant === 'gpu' ? 'GPU (CUDA)'
                 : whisperVariant === 'vulkan' ? 'GPU (Vulkan - AMD/Intel/NVIDIA)'
                     : 'CPU';
-            onProgress({ status: 'downloading', progress: 0, detail: `Cần tải Whisper (${engineLabel})...` });
+            onProgress({ status: 'downloading', progress: 0, detail: `Downloading Whisper (${engineLabel})...` });
             const downloaded = await downloadWhisperEngine(whisperVariant, (p) => {
                 onProgress({
                     status: 'downloading',
@@ -188,19 +214,19 @@ export const transcribeAudio = async (
                 });
             });
             if (!downloaded) {
-                onProgress({ status: 'error', progress: 0, detail: 'Không thể tải Whisper engine!' });
+                onProgress({ status: 'error', progress: 0, detail: 'Failed to download Whisper engine!' });
                 return null;
             }
         }
 
-        onProgress({ status: 'preparing', progress: 15, detail: 'Đang tìm file âm thanh...' });
+        onProgress({ status: 'preparing', progress: 15, detail: 'Finding audio file...' });
         const audioFile = findAudioFile(projectPath);
         if (!audioFile) {
-            onProgress({ status: 'error', progress: 0, detail: 'Không tìm thấy file âm thanh trong project!' });
+            onProgress({ status: 'error', progress: 0, detail: 'Audio file not found in project!' });
             return null;
         }
         console.log('Found audio file:', audioFile);
-        onProgress({ status: 'preparing', progress: 18, detail: `Đã tìm thấy: ${path.basename(audioFile)}` });
+        onProgress({ status: 'preparing', progress: 18, detail: `Found: ${path.basename(audioFile)}` });
 
         const transcriptDir = path.join(projectPath, 'transcript');
         if (!fs.existsSync(transcriptDir)) {
@@ -210,38 +236,39 @@ export const transcribeAudio = async (
         const wavPath = path.join(transcriptDir, 'audio_16k.wav');
 
         if (!fs.existsSync(wavPath)) {
-            onProgress({ status: 'converting', progress: 20, detail: 'Đang chuyển đổi âm thanh sang định dạng WAV...' });
+            onProgress({ status: 'converting', progress: 20, detail: 'Converting audio to WAV...' });
             const ffmpegPath = getFfmpegPath();
             const converted = await convertToWav(audioFile, wavPath, ffmpegPath);
             if (!converted) {
-                onProgress({ status: 'error', progress: 20, detail: 'Lỗi chuyển đổi âm thanh!' });
+                onProgress({ status: 'error', progress: 20, detail: 'Audio conversion failed!' });
                 return null;
             }
         }
 
-        onProgress({ status: 'converting', progress: 30, detail: 'Chuyển đổi âm thanh hoàn tất!' });
+        onProgress({ status: 'converting', progress: 30, detail: 'Audio conversion complete!' });
 
-        onProgress({ status: 'transcribing', progress: 30, detail: 'Bắt đầu nhận dạng giọng nói...' });
+        onProgress({ status: 'transcribing', progress: 30, detail: 'Starting voice recognition...' });
 
+        console.log(`Starting Whisper transcription with variant: ${whisperVariant} and path: ${getWhisperPath(whisperVariant)}`);
         const videoId = path.basename(audioFile, path.extname(audioFile));
         const srtPath = await runWhisper(wavPath, transcriptDir, videoId, onProgress, whisperVariant, language);
 
         if (!srtPath) {
-            onProgress({ status: 'error', progress: 0, detail: 'Nhận dạng giọng nói thất bại!' });
+            onProgress({ status: 'error', progress: 0, detail: 'Voice recognition failed!' });
             return null;
         }
 
-        onProgress({ status: 'transcribing', progress: 95, detail: 'Đang tối ưu phụ đề...' });
+        onProgress({ status: 'transcribing', progress: 95, detail: 'Optimizing subtitles...' });
         const srtContent = optimizeSrtFile(srtPath);
         console.log('SRT optimized:', srtPath);
 
-        onProgress({ status: 'done', progress: 100, detail: 'Hoàn thành nhận dạng giọng nói!' });
+        onProgress({ status: 'done', progress: 100, detail: 'Voice recognition complete!' });
 
         return { srtPath, srtContent };
 
     } catch (error) {
         console.error('Transcription failed:', error);
-        onProgress({ status: 'error', progress: 0, detail: `Lỗi: ${error}` });
+        onProgress({ status: 'error', progress: 0, detail: `Error: ${error}` });
         return null;
     }
 };

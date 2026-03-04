@@ -24,7 +24,7 @@ import { pipeline } from 'stream/promises';
 
 const WORK_ROOT_NAME = 'whisper-workspace';
 
-const REQUIRED_DLLS = [
+export const REQUIRED_DLLS = [
     'libwinpthread-1.dll',
     'libstdc++-6.dll',
     'libgcc_s_seh-1.dll',
@@ -80,32 +80,32 @@ export class WhisperCompileService extends EventEmitter {
             if (!force && this.hasBinaries(binDir)) {
                 // Copy cached binaries to output
                 await this.copyToOutput(binDir, outputDir);
-                this.emitProgress({ step: 'check-cache', message: 'Đã sẵn sàng (từ cache).', progress: 100, state: 'success' });
+                this.emitProgress({ step: 'check-cache', message: 'Ready (from cache).', progress: 100, state: 'success' });
                 this.running = false;
                 return { success: true };
             }
 
             // Step 1: Prepare toolchain context
-            await this.runStep('prepare', 'Đang chuẩn bị workspace...', 5, async () => {
+            await this.runStep('prepare', 'Preparing workspace...', 5, async () => {
                 await fsp.mkdir(binDir, { recursive: true });
             });
 
             const toolchain = await this.prepareToolchain(workRoot, force);
 
             // Step 2: Ensure MSYS2
-            await this.runStep('msys', 'Đang cài đặt MSYS2 toolchain...', 15, async () => {
+            await this.runStep('msys', 'Installing MSYS2 toolchain...', 15, async () => {
                 await this.ensureMsys(toolchain);
             });
 
             // Step 3: Install packages
-            await this.runStep('packages', 'Đang cài đặt packages (gcc, cmake, ninja)...', 25, async () => {
+            await this.runStep('packages', 'Installing packages (gcc, cmake, ninja)...', 25, async () => {
                 await this.installPackages(toolchain);
             });
 
             // Step 4: Check Vulkan SDK
-            await this.runStep('vulkan', 'Đang kiểm tra Vulkan SDK...', 30, async () => {
+            await this.runStep('vulkan', 'Checking Vulkan SDK...', 30, async () => {
                 if (!toolchain.vulkanSdkPath) {
-                    this.emitConsole('[vulkan] Vulkan SDK không tìm thấy. Đang cố cài bằng winget...');
+                    this.emitConsole('[vulkan] Vulkan SDK not found. Attempting to install with winget...');
                     await this.installVulkanSdk();
                     toolchain.vulkanSdkPath = this.resolveVulkanSdkPath() ?? undefined;
                     if (toolchain.vulkanSdkPath) {
@@ -114,38 +114,46 @@ export class WhisperCompileService extends EventEmitter {
                     }
                 }
                 if (!toolchain.vulkanSdkPath) {
-                    this.emitConsole('[vulkan] Vulkan SDK không tìm thấy. Build sẽ không có Vulkan acceleration.');
+                    this.emitConsole('[vulkan] Vulkan SDK not found. Build will proceed without Vulkan acceleration.');
                 }
             });
 
             // Step 5: Fetch whisper.cpp source
             const sourceDir = path.join(workRoot, 'whisper.cpp');
-            await this.runStep('source', 'Đang tải mã nguồn whisper.cpp...', 40, async () => {
+            await this.runStep('source', 'Downloading whisper.cpp source code...', 40, async () => {
                 await this.ensureWhisperSource(sourceDir, force);
             });
 
             // Step 6: Configure CMake
-            await this.runStep('configure', 'Đang cấu hình CMake...', 55, async () => {
+            await this.runStep('configure', 'Configuring CMake...', 55, async () => {
                 await this.configureWithCmake(toolchain, sourceDir);
             });
 
             // Step 7: Build
-            await this.runStep('build', 'Đang biên dịch whisper-cli (có thể mất 5-10 phút)...', 85, async () => {
+            await this.runStep('build', 'Compiling whisper-cli (may take 5-10 minutes)...', 85, async () => {
                 await this.buildBinaries(toolchain, sourceDir);
             });
 
             // Step 8: Copy artifacts
-            await this.runStep('copy', 'Đang sao chép binaries...', 95, async () => {
+            await this.runStep('copy', 'Copying binaries...', 95, async () => {
                 await this.copyArtifacts(toolchain, sourceDir, binDir);
                 await this.copyToOutput(binDir, outputDir);
             });
 
-            this.emitProgress({ step: 'completed', message: 'Biên dịch thành công!', progress: 100, state: 'success' });
+            // Step 9: Verify
+            await this.runStep('verify', 'Verifying the newly compiled binary...', 98, async () => {
+                const isValid = await this.verifyBinary(outputDir);
+                if (!isValid) {
+                    throw new Error('Compiled binary failed to run (missing DLL or memory error).');
+                }
+            });
+
+            this.emitProgress({ step: 'completed', message: 'Compilation successful!', progress: 100, state: 'success' });
             this.running = false;
             return { success: true };
         } catch (error) {
             const err = error as Error;
-            this.emitProgress({ step: 'failed', message: 'Biên dịch thất bại.', progress: 100, state: 'error', error: err.message });
+            this.emitProgress({ step: 'failed', message: 'Compilation failed.', progress: 100, state: 'error', error: err.message });
             this.running = false;
             return { success: false, error: err.message };
         } finally {
@@ -217,6 +225,47 @@ export class WhisperCompileService extends EventEmitter {
         }
     }
 
+    private async verifyBinary(binDir: string): Promise<boolean> {
+        return new Promise((resolve) => {
+            const exePath = path.join(binDir, 'whisper-cli.exe');
+            if (!fs.existsSync(exePath)) return resolve(false);
+
+            this.emitConsole(`[verify] Running trial: ${exePath} --help`);
+            const proc = spawn(exePath, ['--help'], {
+                cwd: binDir,
+                env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH}` }
+            });
+
+            let output = '';
+            proc.stdout.on('data', (d) => output += d.toString());
+            proc.stderr.on('data', (d) => output += d.toString());
+
+            const timeout = setTimeout(() => {
+                proc.kill();
+                this.emitConsole('[verify] Verification timed out.');
+                resolve(false);
+            }, 10000);
+
+            proc.on('close', (code) => {
+                clearTimeout(timeout);
+                this.emitConsole(`[verify] Exit code: ${code}`);
+                if (code === 0 || output.toLowerCase().includes('usage:')) {
+                    this.emitConsole('[verify] Binary is working correctly.');
+                    resolve(true);
+                } else {
+                    this.emitConsole(`[verify] Lỗi: ${output}`);
+                    resolve(false);
+                }
+            });
+
+            proc.on('error', (err) => {
+                clearTimeout(timeout);
+                this.emitConsole(`[verify] Could not start: ${err.message}`);
+                resolve(false);
+            });
+        });
+    }
+
     private resolveVulkanSdkPath(): string | null {
         const envPath = process.env.VULKAN_SDK;
         if (envPath && fs.existsSync(envPath)) {
@@ -270,7 +319,7 @@ export class WhisperCompileService extends EventEmitter {
         try {
             await this.runPowerShell(script, 'VulkanSDK');
         } catch (err) {
-            this.emitConsole(`[vulkan] Không thể cài Vulkan SDK tự động: ${err}`);
+            this.emitConsole(`[vulkan] Could not install Vulkan SDK automatically: ${err}`);
         }
     }
 
@@ -360,7 +409,7 @@ export class WhisperCompileService extends EventEmitter {
 
     private async ensureMsys(context: ToolchainContext): Promise<void> {
         if (fs.existsSync(context.cmakePath)) {
-            this.emitConsole('[msys] MSYS2 đã có sẵn.');
+            this.emitConsole('[msys] MSYS2 is already available.');
             return;
         }
 
@@ -395,7 +444,7 @@ export class WhisperCompileService extends EventEmitter {
 
     private async ensureWhisperSource(sourceDir: string, force: boolean): Promise<void> {
         if (!force && fs.existsSync(path.join(sourceDir, 'CMakeLists.txt'))) {
-            this.emitConsole('[source] whisper.cpp source đã có sẵn.');
+            this.emitConsole('[source] whisper.cpp source is already available.');
             return;
         }
 
@@ -458,7 +507,7 @@ export class WhisperCompileService extends EventEmitter {
         }
 
         if (!enableVulkan) {
-            this.emitConsole('[compile] Vulkan SDK không tìm thấy; build không có Vulkan backend.');
+            this.emitConsole('[compile] Vulkan SDK not found; build will proceed without Vulkan backend.');
         }
 
         await this.spawnWithLogs(context.cmakePath, args, 'CMake Configure', context.env);
@@ -492,62 +541,26 @@ export class WhisperCompileService extends EventEmitter {
             if (fs.existsSync(sourcePath)) {
                 await fsp.copyFile(sourcePath, path.join(binDir, dll));
             } else {
-                this.emitConsole(`[copy] Cảnh báo: DLL không tìm thấy: ${dll}`);
+                this.emitConsole(`[copy] Warning: DLL not found: ${dll}`);
             }
         }
 
-        // Copy any DLLs from the build output too (e.g. ggml-vulkan.dll, whisper.dll)
-        try {
-            const buildFiles = await fsp.readdir(buildBinDir);
-            for (const file of buildFiles) {
-                if (file.endsWith('.dll')) {
-                    await fsp.copyFile(path.join(buildBinDir, file), path.join(binDir, file));
-                }
-            }
-        } catch { /* ignore */ }
-
-        // Also check parent build dir for DLLs
+        // Step 8: Copy DLLs
         const buildDir = path.join(sourceDir, 'build');
-        try {
-            const buildRootFiles = await fsp.readdir(buildDir);
-            for (const file of buildRootFiles) {
-                if (file.endsWith('.dll')) {
-                    await fsp.copyFile(path.join(buildDir, file), path.join(binDir, file));
+        const scanDllRecursive = async (dir: string) => {
+            if (!fs.existsSync(dir)) return;
+            const entries = await fsp.readdir(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    await scanDllRecursive(fullPath);
+                } else if (entry.name.endsWith('.dll')) {
+                    this.emitConsole(`[copy] Found: ${entry.name}`);
+                    await fsp.copyFile(fullPath, path.join(binDir, entry.name));
                 }
             }
-        } catch { /* ignore */ }
-
-        // Check build/src for DLLs (whisper.dll often ends up here)
-        const buildSrcDir = path.join(buildDir, 'src');
-        try {
-            if (fs.existsSync(buildSrcDir)) {
-                const srcBuildFiles = await fsp.readdir(buildSrcDir);
-                for (const file of srcBuildFiles) {
-                    if (file.endsWith('.dll')) {
-                        await fsp.copyFile(path.join(buildSrcDir, file), path.join(binDir, file));
-                    }
-                }
-            }
-        } catch { /* ignore */ }
-
-        // Check build/ggml/src for ggml DLLs
-        const ggmlSrcDir = path.join(buildDir, 'ggml', 'src');
-        try {
-            if (fs.existsSync(ggmlSrcDir)) {
-                const scanDllRecursive = async (dir: string) => {
-                    const entries = await fsp.readdir(dir, { withFileTypes: true });
-                    for (const entry of entries) {
-                        const fullPath = path.join(dir, entry.name);
-                        if (entry.isDirectory()) {
-                            await scanDllRecursive(fullPath);
-                        } else if (entry.name.endsWith('.dll')) {
-                            await fsp.copyFile(fullPath, path.join(binDir, entry.name));
-                        }
-                    }
-                };
-                await scanDllRecursive(ggmlSrcDir);
-            }
-        } catch { /* ignore */ }
+        };
+        await scanDllRecursive(buildDir);
     }
 
     private async runPowerShell(script: string, label: string): Promise<void> {
